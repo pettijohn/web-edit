@@ -28,7 +28,8 @@ CI = "https://github.com/simonw/web-edit/actions"
 web-edit = "web_edit.cli:cli"
 
 [project.optional-dependencies]
-test = ["pytest", "httpx"]
+# Keep httpx for older Starlette releases; newer TestClient versions prefer httpx2.
+test = ["pytest", "httpx", "httpx2"]
 
 [tool.setuptools.packages.find]
 include = ["web_edit*"]
