@@ -63,8 +63,6 @@ input[type=file] { max-width: 100%; font: inherit; margin-top: 8px; }
 .upload-controls { display: flex; gap: 8px; flex-shrink: 0; }
 .upload-footer { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-top: 20px; }
 #upload-summary { font-size: 13px; color: #687584; }
-footer { max-width: 1080px; margin: 40px auto 24px; padding: 20px 0; border-top: 1px solid var(--border); font-size: 11px; color: #8b95a1; }
-footer span { padding: 0 10px; }
 dialog { max-width: min(440px, calc(100% - 28px)); border: 1px solid var(--border); border-radius: 12px; padding: 24px; color: #202b3a; }
 dialog::backdrop { background: #17253166; }
 dialog p { line-height: 1.6; overflow-wrap: anywhere; }
@@ -87,5 +85,4 @@ dialog .actions { justify-content: flex-end; }
   .cm-scroller { font-size: 16px; }
   #uploads { padding: 18px 14px; }
   .upload-info { flex-wrap: wrap; }
-  footer { margin: 24px 14px; }
 }
