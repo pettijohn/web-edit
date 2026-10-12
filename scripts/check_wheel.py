@@ -58,11 +58,14 @@ from web_edit.cli import cli
 
 assert "site-packages" in web_edit.__file__, web_edit.__file__
 assert files("web_edit").joinpath("static/app.js").is_file()
-with TemporaryDirectory() as folder, TestClient(create_app(folder)) as client:
+with TemporaryDirectory() as folder, TestClient(create_app(folder), base_url="http://localhost") as client:
     assert client.get("/").status_code == 200
     assert "cm-editor" in client.get("/static/app.js").text
     assert client.get("/static/app.css").status_code == 200
     assert "@codemirror/view" in client.get("/static/THIRD_PARTY_LICENSES.txt").text
+    assert client.get("/api/browse", headers={"Host": "untrusted.example"}).status_code == 400
+    assert client.put("/api/text", headers={"Host": "untrusted.example", "X-Web-Edit": "1"}, json={"path": "blocked.txt", "content": "blocked"}).status_code == 400
+    assert not Path(folder, "blocked.txt").exists()
     created = client.put("/api/text", headers={"X-Web-Edit": "1"}, json={"path": "nested/test.txt", "content": "wheel works"})
     assert created.status_code == 200, created.text
     updated = client.put("/api/text", headers={"X-Web-Edit": "1"}, json={"path": "nested/test.txt", "content": "saved again", "version": created.json()["version"]})

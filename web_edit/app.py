@@ -11,18 +11,29 @@ from starlette.routing import Mount, Route
 from starlette.staticfiles import StaticFiles
 
 from .files import IMAGE_LIMIT, TEXT_LIMIT, FileError, FileStore
+from .security import allowed_hosts_for, is_allowed_host
 
 STATIC = Path(__file__).parent / "static"
 
 
 class BrowserProtection:
-    """Require a non-simple header for writes; no cookies or authentication."""
+    """Check hosts against DNS rebinding and require a non-simple write header."""
 
-    def __init__(self, app):
+    def __init__(self, app, allowed_hosts):
         self.app = app
+        self.allowed_hosts = allowed_hosts
 
     async def __call__(self, scope, receive, send):
         if scope["type"] == "http":
+            if not is_allowed_host(scope["headers"], self.allowed_hosts):
+                await JSONResponse(
+                    {
+                        "error": "Host not allowed. Configure --allowed-host to allow an additional hostname or IP address."
+                    },
+                    status_code=400,
+                    headers={"Cache-Control": "no-store"},
+                )(scope, receive, send)
+                return
             headers = dict(scope["headers"])
             if (
                 scope["method"] not in {"GET", "HEAD", "OPTIONS"}
@@ -65,7 +76,8 @@ async def handle_error(request, error):
     )
 
 
-def create_app(directory="."):
+def create_app(directory=".", *, host="127.0.0.1", allowed_hosts=()):
+    trusted_hosts = allowed_hosts_for(host, allowed_hosts)
     store = FileStore(directory)
 
     def index(request):
@@ -154,6 +166,6 @@ def create_app(directory="."):
         ],
         exception_handlers={FileError: handle_error, OSError: handle_error},
     )
-    app.add_middleware(BrowserProtection)
+    app.add_middleware(BrowserProtection, allowed_hosts=trusted_hosts)
     app.state.store = store
     return app

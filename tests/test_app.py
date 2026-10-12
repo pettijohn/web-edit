@@ -13,7 +13,7 @@ from web_edit.files import IMAGE_LIMIT, TEXT_LIMIT, FileError, FileStore
 
 @pytest.fixture
 def client(tmp_path):
-    with TestClient(create_app(tmp_path)) as client:
+    with TestClient(create_app(tmp_path), base_url="http://localhost") as client:
         yield client
 
 
