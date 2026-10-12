@@ -25,3 +25,22 @@ jobs:
     - name: Run tests
       run: |
         if [ -d tests ]; then python -m pytest; else echo "Tests directory not found"; fi
+
+  wheel:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v7
+    - uses: actions/setup-python@v7
+      with:
+        python-version: "3.14"
+    - name: Install uv
+      run: pip install uv
+    - name: Verify bundled frontend is current
+      run: |
+        npm ci
+        npm run build
+        git diff --exit-code -- web_edit/static
+    - name: Build and test the wheel in isolation
+      run: |
+        uv build
+        uv run scripts/check_wheel.py dist/web_edit-0.1-py3-none-any.whl
