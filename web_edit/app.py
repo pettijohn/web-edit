@@ -1,0 +1,149 @@
+"""Starlette application factory used by the CLI and embedders."""
+
+import json
+from pathlib import Path
+
+from starlette.applications import Starlette
+from starlette.concurrency import run_in_threadpool
+from starlette.datastructures import UploadFile
+from starlette.responses import FileResponse, JSONResponse
+from starlette.routing import Mount, Route
+from starlette.staticfiles import StaticFiles
+
+from .files import IMAGE_LIMIT, TEXT_LIMIT, FileError, FileStore
+
+STATIC = Path(__file__).parent / "static"
+
+
+class BrowserProtection:
+    """Require a non-simple header for writes; no cookies or authentication."""
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] == "http":
+            headers = dict(scope["headers"])
+            if (
+                scope["method"] not in {"GET", "HEAD", "OPTIONS"}
+                and headers.get(b"x-web-edit") != b"1"
+            ):
+                await JSONResponse(
+                    {"error": "Missing X-Web-Edit header."}, status_code=403
+                )(scope, receive, send)
+                return
+
+            async def secure_send(message):
+                if message["type"] == "http.response.start":
+                    message.setdefault("headers", []).extend(
+                        [
+                            (b"x-content-type-options", b"nosniff"),
+                            (b"cache-control", b"no-store"),
+                            (b"referrer-policy", b"no-referrer"),
+                        ]
+                    )
+                await send(message)
+
+            await self.app(scope, receive, secure_send)
+        else:
+            await self.app(scope, receive, send)
+
+
+async def handle_error(request, error):
+    if isinstance(error, FileError):
+        return JSONResponse(
+            {"error": str(error), **error.details}, status_code=error.status
+        )
+    if isinstance(error, FileNotFoundError):
+        return JSONResponse({"error": "File or folder not found."}, status_code=404)
+    if isinstance(error, PermissionError):
+        return JSONResponse(
+            {"error": "Permission denied for this file or folder."}, status_code=403
+        )
+    return JSONResponse(
+        {"error": "The filesystem operation could not be completed."}, status_code=400
+    )
+
+
+def create_app(directory="."):
+    store = FileStore(directory)
+
+    def index(request):
+        return FileResponse(
+            STATIC / "index.html",
+            headers={
+                "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'",
+            },
+        )
+
+    def browse(request):
+        return JSONResponse(store.browse(request.query_params.get("path", "")))
+
+    def read_text(request):
+        return JSONResponse(store.text(request.query_params.get("path", "")))
+
+    async def save_text(request):
+        # Bound JSON before decoding, allowing for JSON's escaped representation.
+        chunks = bytearray()
+        async for chunk in request.stream():
+            chunks.extend(chunk)
+            if len(chunks) > TEXT_LIMIT * 6 + 8192:
+                raise FileError("Text editing is limited to 10 MiB.", 413)
+        try:
+            body = json.loads(chunks)
+        except (ValueError, UnicodeDecodeError):
+            raise FileError("Invalid JSON.")
+        if not isinstance(body, dict) or "path" not in body or "content" not in body:
+            raise FileError("Provide path and content.")
+        result = await run_in_threadpool(
+            store.save_text, body["path"], body["content"], body.get("version")
+        )
+        return JSONResponse(result)
+
+    async def upload(request):
+        async with request.form(max_files=1, max_fields=2) as form:
+            file = form.get("file")
+            relative = form.get("path")
+            expected = form.get("version")
+            if not isinstance(file, UploadFile) or not isinstance(relative, str):
+                raise FileError("Provide a file and destination path.")
+            if expected is not None and not isinstance(expected, str):
+                raise FileError("Invalid version.")
+            result = await run_in_threadpool(store.write, relative, file.file, expected)
+            return JSONResponse(result, status_code=201)
+
+    def download(request):
+        path = store.regular_file(request.query_params.get("path", ""))
+        return FileResponse(
+            path, filename=path.name, media_type="application/octet-stream"
+        )
+
+    def image(request):
+        path = store.regular_file(request.query_params.get("path", ""))
+        mime = store.image_type(path)
+        if not mime or path.stat().st_size >= IMAGE_LIMIT:
+            raise FileError(
+                "Image previews are available for images smaller than 2 MB.", 415
+            )
+        return FileResponse(
+            path,
+            media_type=mime,
+            headers={"Content-Security-Policy": "sandbox; default-src 'none'"},
+        )
+
+    app = Starlette(
+        routes=[
+            Route("/", index),
+            Route("/api/browse", browse),
+            Route("/api/text", read_text, methods=["GET"]),
+            Route("/api/text", save_text, methods=["PUT"]),
+            Route("/api/upload", upload, methods=["POST"]),
+            Route("/api/download", download),
+            Route("/api/image", image),
+            Mount("/static", StaticFiles(directory=STATIC), name="static"),
+        ],
+        exception_handlers={FileError: handle_error, OSError: handle_error},
+    )
+    app.add_middleware(BrowserProtection)
+    app.state.store = store
+    return app

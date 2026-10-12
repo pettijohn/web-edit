@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#f6f7f9">
+  <title>web-edit</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="./static/app.css">
+  <script type="module" src="./static/app.js"></script>
+</head>
+<body>
+  <header class="app-header">
+    <a class="brand" href="#"><span class="brand-icon">we</span> web-edit</a>
+    <span class="root-label" id="root-label">Your files, in reach.</span>
+  </header>
+  <main>
+    <div id="notice" role="status" aria-live="polite" hidden></div>
+    <section id="browser" aria-label="File browser">
+      <div class="section-heading"><div><p class="eyebrow">WORKSPACE</p><h1>Files</h1></div>
+        <div class="actions"><button id="refresh" class="secondary">Refresh</button><button id="show-upload" class="secondary">Upload files</button><button id="new-file">New file</button></div>
+      </div>
+      <nav id="breadcrumbs" aria-label="Folder breadcrumb"></nav>
+      <div class="list-heading"><span>Name</span><span>Size</span><span>Modified</span><span></span></div>
+      <div id="file-list" aria-live="polite"></div>
+      <p class="hint">Images under 2 MB appear inline. Select a text file to edit it.</p>
+    </section>
+    <section id="editor-section" aria-label="Text editor" hidden>
+      <div class="section-heading"><div class="editor-title"><button id="back" class="secondary">← Files</button><h1 id="editor-title">New file</h1></div>
+        <div class="actions"><a id="editor-download" class="button secondary" download>Download</a><button id="save">Save</button></div>
+      </div>
+      <label id="new-path-label" for="new-path">File path <input id="new-path" placeholder="notes/hello.txt" autocomplete="off" spellcheck="false"></label>
+      <div class="editor-meta"><span id="save-state" role="status">Unsaved</span><span>UTF-8 · <span id="language-label">Plain text</span></span></div>
+      <div id="editor"></div>
+      <p class="hint">Save with <kbd>Ctrl</kbd>/<kbd>⌘</kbd> + <kbd>S</kbd>. Your changes stay here until you save.</p>
+    </section>
+    <section id="viewer" aria-label="File preview" hidden>
+      <div class="section-heading"><div class="editor-title"><button id="viewer-back" class="secondary">← Files</button><h1 id="viewer-title"></h1></div><a id="viewer-download" class="button" download>Download</a></div>
+      <div id="viewer-content"></div>
+    </section>
+    <section id="uploads" aria-label="Upload queue" hidden>
+      <div class="section-heading"><div><p class="eyebrow">UPLOAD QUEUE</p><h2>Add files</h2></div><button id="close-uploads" class="secondary">Close</button></div>
+      <label for="upload-folder">Destination folder <input id="upload-folder" placeholder="Current folder" autocomplete="off" spellcheck="false"></label>
+      <label class="drop-zone" id="drop-zone" for="file-picker"><strong>Choose files or drop them here</strong><span>Set a path and filename for each file before uploading.</span><input type="file" id="file-picker" multiple></label>
+      <div id="upload-list"></div>
+      <div class="upload-footer"><span id="upload-summary" role="status"></span><button id="start-uploads" disabled>Upload files</button></div>
+    </section>
+  </main>
+  <footer>web-edit <span>·</span> A little workspace for your files.</footer>
+  <dialog id="confirmation" aria-labelledby="confirmation-title" aria-describedby="confirmation-message">
+    <form method="dialog">
+      <h2 id="confirmation-title">Confirm</h2>
+      <p id="confirmation-message"></p>
+      <div class="actions"><button class="secondary" value="cancel" autofocus>Cancel</button><button id="confirm-action" value="accept">Continue</button></div>
+    </form>
+  </dialog>
+</body>
+</html>

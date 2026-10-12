@@ -1,0 +1,4 @@
+include package.json package-lock.json
+recursive-include frontend *.js *.mjs
+recursive-include web_edit/static *
+recursive-include scripts *.py

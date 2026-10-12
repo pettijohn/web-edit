@@ -8,7 +8,10 @@ license = "Apache-2.0"
 requires-python = ">=3.11"
 classifiers = []
 dependencies = [
-    "click"
+    "click",
+    "starlette>=0.47",
+    "uvicorn>=0.30",
+    "python-multipart>=0.0.20"
 ]
 
 [build-system]
@@ -25,4 +28,10 @@ CI = "https://github.com/simonw/web-edit/actions"
 web-edit = "web_edit.cli:cli"
 
 [project.optional-dependencies]
-test = ["pytest"]
+test = ["pytest", "httpx"]
+
+[tool.setuptools.packages.find]
+include = ["web_edit*"]
+
+[tool.setuptools.package-data]
+web_edit = ["static/*"]
