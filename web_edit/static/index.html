@@ -20,9 +20,17 @@
       <div class="section-heading"><div><p class="eyebrow">WORKSPACE</p><h1>Files</h1></div>
         <div class="actions"><button id="refresh" class="secondary">Refresh</button><button id="show-upload" class="secondary">Upload files</button><button id="new-file">New file</button></div>
       </div>
-      <nav id="breadcrumbs" aria-label="Folder breadcrumb"></nav>
+      <nav id="breadcrumbs" aria-label="Folder breadcrumb"><a href="#browse?path=">Files</a></nav>
       <div class="list-heading"><span>Name</span><span>Size</span><span>Modified</span><span></span></div>
-      <div id="file-list" aria-live="polite"></div>
+      <div id="file-list" aria-live="polite">
+        <div class="loading-state" role="status">
+          <svg class="loading-spinner" viewBox="0 0 24 24" width="24" height="24" fill="none" aria-hidden="true" focusable="false">
+            <circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2" opacity=".16" />
+            <path d="M12 3a9 9 0 0 1 9 9" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+          </svg>
+          <span class="loading-label">Loading files…</span>
+        </div>
+      </div>
       <p class="hint">Images under 2 MB appear inline. Select a text file to edit it.</p>
     </section>
     <section id="editor-section" aria-label="Text editor" hidden>

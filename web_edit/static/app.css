@@ -40,6 +40,10 @@ button.danger { background: #a13227; border-color: #a13227; color: white; }
 .thumbnail { width: 100px; height: 76px; object-fit: contain; border-radius: 5px; background: #f3f5f7; flex-shrink: 0; }
 .hint { font-size: 12px; line-height: 1.7; color: #77818d; margin-top: 16px; }
 .empty { padding: 48px 20px; text-align: center; color: #758191; }
+.loading-state { display: flex; align-items: center; justify-content: center; gap: 12px; min-height: 144px; padding: 32px 20px; color: #758191; font-size: 14px; }
+.loading-spinner { flex-shrink: 0; color: #648676; animation: loading-spin 1.4s linear infinite; }
+@keyframes loading-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .loading-spinner { animation: none; } }
 #notice { margin-bottom: 22px; padding: 14px 16px; border: 1px solid #bddacb; border-radius: 8px; background: #eef7f1; font-size: 14px; overflow-wrap: anywhere; }
 #notice.error { border-color: #e4c2bc; background: #fff3f0; color: #933d30; }
 .editor-title { display: flex; align-items: center; gap: 18px; min-width: 0; }

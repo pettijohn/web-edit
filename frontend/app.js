@@ -9,6 +9,7 @@ import { json } from "@codemirror/lang-json";
 import { markdown } from "@codemirror/lang-markdown";
 
 const $ = (id) => document.getElementById(id);
+const loadingTemplate = document.querySelector(".loading-state").cloneNode(true);
 const normalise = (text) => text.replace(/\r\n?/g, "\n");
 const parentPath = (path) => path.split("/").slice(0, -1).join("/");
 const joinPath = (folder, name) => folder ? `${folder.replace(/\/$/, "")}/${name}` : name;
@@ -23,6 +24,11 @@ function element(tag, className, text) {
   if (className) node.className = className;
   if (text !== undefined) node.textContent = text;
   return node;
+}
+function loadingState(message) {
+  const state = loadingTemplate.cloneNode(true);
+  state.querySelector(".loading-label").textContent = message;
+  return state;
 }
 function notify(message, error = false) {
   $("notice").textContent = message;
@@ -213,10 +219,17 @@ function openViewer(path, message, preview) {
   $("viewer-download").href = apiURL("download", path);
   $("viewer-content").replaceChildren();
   if (preview) {
+    const loading = loadingState("Loading image…");
     const image = element("img");
-    image.src = apiURL("image", path); image.alt = path;
-    image.addEventListener("error", () => { $("viewer-content").replaceChildren(element("p", "", "This image cannot be previewed. You can download it instead.")); });
-    $("viewer-content").append(image);
+    image.alt = path; image.hidden = true;
+    image.addEventListener("load", () => { loading.remove(); image.hidden = false; });
+    image.addEventListener("error", () => {
+      if (!image.isConnected) return;
+      loading.replaceWith(element("p", "", "This image cannot be previewed. You can download it instead."));
+      image.remove();
+    });
+    $("viewer-content").append(loading, image);
+    image.src = apiURL("image", path);
     if (/\.svg$/i.test(path)) {
       const edit = element("a", "button secondary", "Edit SVG source");
       edit.href = routeURL("edit", path);
@@ -237,7 +250,7 @@ async function route() {
   // Prevent edits to the previous document while a new one is loading.
   destroyEditor();
   showSection("browser");
-  $("file-list").replaceChildren(element("div", "empty", "Loading…"));
+  $("file-list").replaceChildren(loadingState(mode === "edit" ? "Opening file…" : "Loading files…"));
   try {
     if (mode === "new") { openEditor(path, { content: "" }, true); return; }
     if (mode === "view") { currentFolder = parentPath(path); openViewer(path, "", true); return; }
