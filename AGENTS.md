@@ -1,7 +1,6 @@
 # Repository instructions
 
 - Only make minimal, directly relevant edits to `README.md`. Preserve its concise structure and avoid adding lengthy explanations.
-- Keep wheel-building and verification instructions in this file, not in the README. Do not restore a "Building and checking the wheel" section there.
 - Run Python code with `uv run` or `uv run python`.
 - Keep each prose paragraph on a single source line. Preserve line breaks required by Markdown structure.
 
