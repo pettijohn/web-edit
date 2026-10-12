@@ -12,6 +12,6 @@ The wheel must include the bundled CodeMirror JavaScript and all other frontend 
 Build the distributions and verify the wheel in an isolated environment:
 
 ```bash
-uv build
-uv run scripts/check_wheel.py dist/web_edit-0.1-py3-none-any.whl
+uv build --clear
+uv run scripts/check_wheel.py dist/*.whl
 ```

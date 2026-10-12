@@ -42,5 +42,5 @@ jobs:
         git diff --exit-code -- web_edit/static
     - name: Build and test the wheel in isolation
       run: |
-        uv build
-        uv run scripts/check_wheel.py dist/web_edit-0.1-py3-none-any.whl
+        uv build --clear
+        uv run scripts/check_wheel.py dist/*.whl

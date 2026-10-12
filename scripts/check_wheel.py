@@ -1,15 +1,19 @@
 """Install a built wheel away from the checkout and exercise its packaged app.
 
-Usage: uv run scripts/check_wheel.py dist/web_edit-0.1-py3-none-any.whl
+Usage: uv run scripts/check_wheel.py dist/*.whl
 """
 
+import argparse
 import subprocess
 import sys
 import tempfile
 import zipfile
 from pathlib import Path
 
-wheel = Path(sys.argv[1]).resolve()
+parser = argparse.ArgumentParser(description=__doc__)
+parser.add_argument("wheel", type=Path, help="Path to the single wheel to verify")
+wheel = parser.parse_args().wheel.resolve()
+print(f"Verifying {wheel.name}", flush=True)
 required = {
     "web_edit/static/index.html",
     "web_edit/static/app.css",
