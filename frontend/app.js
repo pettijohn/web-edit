@@ -91,6 +91,58 @@ function breadcrumbs(path) {
     nav.append(link);
   }
 }
+function addDeleteControl(file, row, actions) {
+  const toggle = element("button", "delete-toggle", "Delete");
+  toggle.setAttribute("aria-label", `Delete ${file.name}`);
+  toggle.setAttribute("aria-expanded", "false");
+  actions.append(toggle);
+  toggle.addEventListener("click", () => {
+    toggle.hidden = true;
+    toggle.setAttribute("aria-expanded", "true");
+    const panel = element("div", "delete-confirmation");
+    panel.setAttribute("role", "group");
+    panel.setAttribute("aria-label", `Confirm deletion of ${file.name}`);
+    const folder = file.kind === "directory";
+    const message = element("p", "", folder
+      ? `Permanently delete “${file.name}” and everything inside it? This cannot be undone.`
+      : `Permanently delete “${file.name}”? This cannot be undone.`);
+    const controls = element("div", "delete-confirmation-actions");
+    const cancel = element("button", "secondary", "Cancel");
+    const confirm = element("button", "danger", folder ? "Delete folder" : "Delete file");
+    controls.append(cancel, confirm);
+    panel.append(message, controls);
+    row.append(panel);
+    // Put focus on the safe action, away from the original tap target.
+    cancel.focus({ preventScroll: true });
+    const close = () => {
+      if (cancel.disabled) return;
+      panel.remove(); toggle.hidden = false;
+      toggle.setAttribute("aria-expanded", "false"); toggle.focus({ preventScroll: true });
+    };
+    cancel.addEventListener("click", close);
+    panel.addEventListener("keydown", (event) => { if (event.key === "Escape") { event.preventDefault(); close(); } });
+    confirm.addEventListener("click", async () => {
+      cancel.disabled = true; confirm.disabled = true; confirm.textContent = "Deleting…";
+      try {
+        const query = new URLSearchParams({ path: file.path, kind: file.kind, version: file.delete_version });
+        await api(`./api/file?${query}`, { method: "DELETE", headers: { "X-Web-Edit": "1" } });
+        if (row.isConnected) {
+          row.remove();
+          if (!$("file-list").children.length) $("file-list").append(element("div", "empty", "This folder is empty. Create a file or upload something to get started."));
+          notify(`Deleted ${file.path}.`);
+          $("refresh").focus({ preventScroll: true });
+        }
+      } catch (error) {
+        message.textContent = error.message;
+        message.setAttribute("role", "alert");
+        cancel.disabled = false;
+        // A changed item must be refreshed and confirmed again.
+        confirm.disabled = error.status === 409 || error.status === 404;
+        confirm.textContent = "Retry delete";
+      }
+    });
+  });
+}
 function renderFiles(data) {
   currentFolder = data.path;
   rootName = data.root_name;
@@ -119,7 +171,10 @@ function renderFiles(data) {
     row.append(link, element("span", "file-size", file.kind === "directory" ? "—" : size(file.size)), element("span", "file-date", new Date(file.modified * 1000).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })));
     const download = element(file.kind === "file" ? "a" : "span", "file-download", file.kind === "file" ? "Download ↓" : "");
     if (file.kind === "file") { download.href = apiURL("download", file.path); download.download = file.name; download.setAttribute("aria-label", `Download ${file.name}`); }
-    row.append(download);
+    const actions = element("div", "file-actions");
+    actions.append(download);
+    if (supported) addDeleteControl(file, row, actions);
+    row.append(actions);
     list.append(row);
   }
 }

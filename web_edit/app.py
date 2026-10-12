@@ -118,6 +118,15 @@ def create_app(directory="."):
             path, filename=path.name, media_type="application/octet-stream"
         )
 
+    def delete(request):
+        return JSONResponse(
+            store.delete(
+                request.query_params.get("path", ""),
+                request.query_params.get("kind"),
+                request.query_params.get("version"),
+            )
+        )
+
     def image(request):
         path = store.regular_file(request.query_params.get("path", ""))
         mime = store.image_type(path)
@@ -139,6 +148,7 @@ def create_app(directory="."):
             Route("/api/text", save_text, methods=["PUT"]),
             Route("/api/upload", upload, methods=["POST"]),
             Route("/api/download", download),
+            Route("/api/file", delete, methods=["DELETE"]),
             Route("/api/image", image),
             Mount("/static", StaticFiles(directory=STATIC), name="static"),
         ],

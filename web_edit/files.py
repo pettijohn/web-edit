@@ -40,6 +40,12 @@ def version(path):
         return hashlib.file_digest(source, "sha256").hexdigest()
 
 
+def delete_version(info):
+    """Identify the item shown in a listing without reading file contents."""
+    value = f"{info.st_dev}:{info.st_ino}:{info.st_mtime_ns}:{info.st_size}:{stat.S_IFMT(info.st_mode)}"
+    return hashlib.sha256(value.encode()).hexdigest()
+
+
 def decode_text(data):
     try:
         text = data.decode("utf-8-sig")
@@ -137,6 +143,7 @@ class FileStore:
                     "kind": kind,
                     "size": info.st_size,
                     "modified": info.st_mtime,
+                    "delete_version": delete_version(info),
                     "preview": kind == "file"
                     and info.st_size < IMAGE_LIMIT
                     and bool(self.image_type(child)),
@@ -156,6 +163,31 @@ class FileStore:
             "root_name": self.root.name or "/",
             "entries": entries,
         }
+
+    def delete(self, relative, kind, expected):
+        with self.lock:
+            target = self.path(relative)
+            if target == self.root:
+                raise FileError("The root folder cannot be deleted.", 403)
+            if kind not in {"file", "directory"} or not expected:
+                raise FileError(
+                    "Provide the item kind and version from the folder listing."
+                )
+            info = target.lstat()
+            actual_kind = "directory" if stat.S_ISDIR(info.st_mode) else "file"
+            if not (stat.S_ISDIR(info.st_mode) or stat.S_ISREG(info.st_mode)):
+                raise FileError("Only regular files and folders can be deleted.", 403)
+            if kind != actual_kind or expected != delete_version(info):
+                raise FileError(
+                    "This item changed since the folder was loaded. Refresh before deleting it.",
+                    409,
+                )
+            if kind == "directory":
+                # rmtree removes child symlinks themselves, never their targets.
+                shutil.rmtree(target)
+            else:
+                target.unlink()
+            return {"path": relative, "deleted": True}
 
     def text(self, relative):
         with self.lock:

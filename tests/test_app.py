@@ -341,3 +341,115 @@ def test_frontend_assets(client):
     assert "cm-editor" in bundle.text
     assert client.get("/static/app.css").status_code == 200
     assert "@codemirror/view" in client.get("/static/THIRD_PARTY_LICENSES.txt").text
+
+
+def delete_entry(client, path, **overrides):
+    parent = path.rsplit("/", 1)[0] if "/" in path else ""
+    entry = next(
+        item
+        for item in client.get("/api/browse", params={"path": parent}).json()["entries"]
+        if item["path"] == path
+    )
+    params = {
+        "path": path,
+        "kind": entry["kind"],
+        "version": entry["delete_version"],
+        **overrides,
+    }
+    return client.delete("/api/file", headers={"X-Web-Edit": "1"}, params=params)
+
+
+def test_delete_file(client, tmp_path):
+    path = "a & #? café.txt"
+    (tmp_path / path).write_text("delete this")
+    (tmp_path / "keep.txt").write_text("keep")
+    response = delete_entry(client, path)
+    assert response.status_code == 200
+    assert response.json() == {"path": path, "deleted": True}
+    assert not (tmp_path / path).exists()
+    assert (tmp_path / "keep.txt").read_text() == "keep"
+    assert client.get("/api/download", params={"path": path}).status_code == 404
+
+
+@pytest.mark.parametrize("populated", [False, True])
+def test_delete_folder(client, tmp_path, populated):
+    folder = tmp_path / "folder"
+    folder.mkdir()
+    if populated:
+        (folder / "nested").mkdir()
+        (folder / "nested" / "file.txt").write_text("inside")
+        (folder / ".hidden").write_text("inside")
+    assert delete_entry(client, "folder").status_code == 200
+    assert not folder.exists()
+    assert tmp_path.is_dir()
+
+
+@pytest.mark.parametrize(
+    "path", ["", ".", "./", "../outside", "/tmp/outside", "folder/../../outside"]
+)
+def test_delete_cannot_remove_root_or_escape(client, tmp_path, path):
+    (tmp_path / "keep.txt").write_text("keep")
+    response = client.delete(
+        "/api/file",
+        headers={"X-Web-Edit": "1"},
+        params={"path": path, "kind": "directory", "version": "anything"},
+    )
+    assert response.status_code == 403
+    assert (tmp_path / "keep.txt").read_text() == "keep"
+
+
+def test_delete_requires_header_kind_and_version(client, tmp_path):
+    (tmp_path / "keep.txt").write_text("keep")
+    assert client.delete("/api/file", params={"path": "keep.txt"}).status_code == 403
+    assert (
+        client.delete(
+            "/api/file", headers={"X-Web-Edit": "1"}, params={"path": "keep.txt"}
+        ).status_code
+        == 400
+    )
+    assert (tmp_path / "keep.txt").exists()
+
+
+def test_delete_rejects_changed_item(client, tmp_path):
+    (tmp_path / "file.txt").write_text("before")
+    before = client.get("/api/browse").json()["entries"][0]
+    (tmp_path / "file.txt").write_text("changed externally")
+    assert (
+        delete_entry(client, "file.txt", version=before["delete_version"]).status_code
+        == 409
+    )
+    assert (tmp_path / "file.txt").read_text() == "changed externally"
+
+
+def test_delete_rejects_changed_kind(client, tmp_path):
+    (tmp_path / "folder").mkdir()
+    assert delete_entry(client, "folder", kind="file").status_code == 409
+    assert (tmp_path / "folder").exists()
+
+
+def test_delete_missing_file(client):
+    response = client.delete(
+        "/api/file",
+        headers={"X-Web-Edit": "1"},
+        params={"path": "gone", "kind": "file", "version": "anything"},
+    )
+    assert response.status_code == 404
+
+
+def test_delete_folder_does_not_follow_child_symlinks(client, tmp_path):
+    outside = tmp_path.parent / f"{tmp_path.name}-outside"
+    outside.mkdir()
+    (outside / "keep.txt").write_text("keep")
+    (tmp_path / "folder").mkdir()
+    (tmp_path / "folder" / "link").symlink_to(outside, target_is_directory=True)
+    (tmp_path / "direct-link").symlink_to(outside, target_is_directory=True)
+    response = client.delete(
+        "/api/file",
+        headers={"X-Web-Edit": "1"},
+        params={"path": "direct-link", "kind": "directory", "version": "anything"},
+    )
+    assert response.status_code == 403
+    assert delete_entry(client, "folder").status_code == 200
+    assert not (tmp_path / "folder").exists()
+    assert (outside / "keep.txt").read_text() == "keep"
+    assert (tmp_path / "direct-link").is_symlink()
