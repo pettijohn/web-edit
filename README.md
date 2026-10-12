@@ -13,16 +13,27 @@ Install this tool using `pip`:
 ```bash
 pip install web-edit
 ```
+Or `uv`:
+```bash
+uv tool install web-edit
+```
+Or run directly with `uvx`:
+```bash
+uvx web-edit --help
+```
 ## Usage
 
-For help, run:
+Run this tool in a folder to start a localhost web app serving a UI for creating and editing files in that folder.
+
+Pass a path to a folder to target that folder instead:
+
 ```bash
-web-edit --help
+uvx web-edit ~/sites/mysite
 ```
-You can also use:
-```bash
-python -m web_edit --help
-```
+Defaults to listening on `127.0.0.1:9000`.
+
+Use `-p/--port` to specify a different port and `-h/--host` for a different host IP.
+
 ## Development
 
 To contribute to this tool, first checkout the code. Then create a new virtual environment:
