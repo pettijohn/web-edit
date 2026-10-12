@@ -1,6 +1,6 @@
 [project]
 name = "web-edit"
-version = "0.1"
+version = "0.1a0"
 description = "Web app for editing files in a folder"
 readme = "README.md"
 authors = [{name = "Simon Willison"}]
