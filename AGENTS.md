@@ -1,6 +1,7 @@
 # Repository instructions
 
 - Only make minimal, directly relevant edits to `README.md`. Preserve its concise structure and avoid adding lengthy explanations.
+- Keep UI text concise and functional. Do not add marketing copy, slogans, or promotional taglines.
 - Run Python code with `uv run` or `uv run python`.
 - Keep each prose paragraph on a single source line. Preserve line breaks required by Markdown structure.
 
