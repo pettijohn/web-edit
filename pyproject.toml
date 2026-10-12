@@ -9,7 +9,7 @@ requires-python = ">=3.11"
 classifiers = []
 dependencies = [
     "click",
-    "starlette>=0.47",
+    "starlette>=1.7.0",
     "uvicorn>=0.30",
     "python-multipart>=0.0.20"
 ]
@@ -28,8 +28,7 @@ CI = "https://github.com/simonw/web-edit/actions"
 web-edit = "web_edit.cli:cli"
 
 [project.optional-dependencies]
-# Keep httpx for older Starlette releases; newer TestClient versions prefer httpx2.
-test = ["pytest", "httpx", "httpx2"]
+test = ["pytest", "httpx2"]
 
 [tool.setuptools.packages.find]
 include = ["web_edit*"]
