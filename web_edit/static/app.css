@@ -24,14 +24,14 @@ h2 { margin: 0; font-size: 22px; }
 .list-heading, .file-row { display: grid; grid-template-columns: minmax(0, 1fr) 90px 130px 170px; align-items: center; gap: 16px; }
 .list-heading { padding: 0 18px 10px; color: #798493; font-size: 12px; }
 #file-list { background: white; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
-.file-row { padding: 12px 18px; min-height: 73px; border-bottom: 1px solid #edf0f2; }
+.file-row { padding: 6px 18px; min-height: 56px; border-bottom: 1px solid #edf0f2; }
 .file-row:last-child { border: 0; }
-.file-name { display: flex; align-items: center; gap: 14px; min-width: 0; overflow-wrap: anywhere; font-size: 15px; font-weight: 500; }
-.file-icon { width: 34px; height: 40px; border-radius: 6px; background: #f0f3f6; color: #6c7b8b; display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-size: 19px; }
+.file-name { display: flex; align-items: center; gap: 10px; min-width: 0; min-height: 44px; overflow-wrap: anywhere; font-size: 15px; font-weight: 500; }
+.file-icon { width: 28px; height: 32px; border-radius: 5px; background: #f0f3f6; color: #6c7b8b; display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-size: 17px; }
 .folder-icon { background: #f4eedc; color: #997c2c; }
 .file-size, .file-date { font-size: 12px; color: #758191; }
 .file-download { font-size: 12px; min-height: 44px; display: flex; align-items: center; justify-content: end; }
-.file-actions { display: flex; align-items: center; justify-content: flex-end; gap: 12px; }
+.file-actions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
 .delete-toggle { padding: 8px; border: 0; background: transparent; color: #a13227; font-size: 12px; }
 .delete-confirmation { grid-column: 1 / -1; padding: 16px; border: 1px solid #ecc6bf; border-radius: 8px; background: #fff5f2; }
 .delete-confirmation p { margin: 0 0 12px; font-size: 14px; line-height: 1.5; overflow-wrap: anywhere; }
@@ -80,12 +80,11 @@ dialog .actions { justify-content: flex-end; }
   .actions { width: 100%; }
   .actions > * { flex: 1; }
   h1 { font-size: 28px; }
-  .list-heading, .file-row { grid-template-columns: minmax(0, 1fr) 65px; gap: 8px; padding-left: 12px; padding-right: 12px; }
+  .list-heading, .file-row { grid-template-columns: minmax(0, 1fr) auto; gap: 8px; padding-left: 12px; padding-right: 12px; }
   .list-heading > :nth-child(2), .list-heading > :nth-child(3), .file-size, .file-date { display: none; }
   .file-name { font-size: 14px; gap: 10px; }
   .file-download { font-size: 11px; }
-  .file-actions { flex-direction: column; gap: 0; }
-  .thumbnail { width: 64px; height: 60px; }
+  .thumbnail { width: 56px; height: 44px; }
   .editor-title { width: 100%; gap: 12px; }
   .editor-title button { flex-shrink: 0; }
   .editor-title h1 { font-size: 18px; }

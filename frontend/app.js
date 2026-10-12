@@ -169,10 +169,13 @@ function renderFiles(data) {
     }
     link.append(element("span", "", file.name + (supported ? "" : " (not followed)")));
     row.append(link, element("span", "file-size", file.kind === "directory" ? "—" : size(file.size)), element("span", "file-date", new Date(file.modified * 1000).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })));
-    const download = element(file.kind === "file" ? "a" : "span", "file-download", file.kind === "file" ? "Download ↓" : "");
-    if (file.kind === "file") { download.href = apiURL("download", file.path); download.download = file.name; download.setAttribute("aria-label", `Download ${file.name}`); }
     const actions = element("div", "file-actions");
-    actions.append(download);
+    if (file.kind === "file") {
+      const download = element("a", "file-download", "Download ↓");
+      download.href = apiURL("download", file.path); download.download = file.name;
+      download.setAttribute("aria-label", `Download ${file.name}`);
+      actions.append(download);
+    }
     if (supported) addDeleteControl(file, row, actions);
     row.append(actions);
     list.append(row);
