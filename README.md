@@ -50,8 +50,7 @@ To protect against [DNS rebinding attacks](https://tailscale.com/docs/reference/
 ## Development
 
 ```bash
-uv sync --extra test
-uv run web-edit .
+uv run web-edit --help
 uv run pytest
 ```
 
