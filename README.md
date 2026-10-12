@@ -59,10 +59,3 @@ After changing `frontend/app.js`, rebuild and commit the bundled JavaScript:
 npm ci
 npm run build
 ```
-
-Build and verify the wheel:
-
-```bash
-uv build
-uv run scripts/check_wheel.py dist/web_edit-0.1-py3-none-any.whl
-```
