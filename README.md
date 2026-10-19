@@ -62,3 +62,5 @@ After changing `frontend/app.js`, rebuild and commit the bundled JavaScript:
 npm ci
 npm run build
 ```
+
+For browser tests, install Chromium with `npx playwright install chromium`. Then run `npm run test:frontend`.

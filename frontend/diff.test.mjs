@@ -89,6 +89,44 @@ test("Back invalidates a pending file load and unlocks the visible comparison", 
   } finally { release(); await page.close(); }
 });
 
+test("working-tree edits survive layout changes and cancelled navigation", { timeout: 20000 }, async () => {
+  const { page, errors } = await openPage();
+  try {
+    assert.equal(await page.locator("#diff-editor [contenteditable=true]").count(), 1);
+    await page.locator("#diff-editor [contenteditable=true]").fill("unsaved replacement\n");
+    await page.locator("#diff-layout").selectOption("unified");
+    assert.equal(await page.locator("#diff-save-state").textContent(), "Unsaved changes");
+    await page.locator("#diff-list a").filter({ hasText: "b.txt" }).click();
+    await page.locator("#confirmation").waitFor({ state: "visible" });
+    await page.locator('#confirmation button[value="cancel"]').click();
+    assert.equal(await page.locator("#diff-title").textContent(), "a.txt");
+    await page.locator("#diff-layout").selectOption("split");
+    assert.match(await page.locator(".cm-merge-b").innerText(), /unsaved replacement/);
+    await page.locator("#diff-editor [contenteditable=true]").press("Control+z");
+    assert.equal(await page.locator("#diff-save-state").textContent(), "All changes saved");
+    assert.deepEqual(errors, []);
+  } finally { await page.close(); }
+});
+
+test("save conflicts retain edited text and send the working-tree version", { timeout: 20000 }, async () => {
+  const { page, errors } = await openPage();
+  try {
+    let body;
+    await page.route("**/api/text", async (request) => {
+      body = request.request().postDataJSON();
+      await request.fulfill({ status: 409, json: { error: "File changed on disk." } });
+    });
+    await page.locator("#diff-editor [contenteditable=true]").fill("keep these edits\n");
+    await page.locator("#diff-save").click();
+    await page.waitForFunction(() => document.querySelector("#notice").textContent.includes("Your edits are still here."));
+    assert.deepEqual(body, { path: "repo/a.txt", content: "keep these edits\n", version: "test-version" });
+    assert.match(await page.locator(".cm-merge-b").innerText(), /keep these edits/);
+    assert.equal(await page.locator("#diff-save-state").textContent(), "Unsaved changes");
+    assert.equal(await page.locator("#diff-save").isEnabled(), true);
+    assert.deepEqual(errors, []);
+  } finally { await page.close(); }
+});
+
 test("layout selection updates all file routes and survives selecting another file", { timeout: 20000 }, async () => {
   const { page, errors } = await openPage();
   try {
