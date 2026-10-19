@@ -88,11 +88,13 @@ select { min-height: 44px; font: inherit; color: inherit; background: white; bor
 .diff-file-row { display: flex; align-items: center; border-bottom: 1px solid var(--border); }
 .diff-file-row:last-child { border-bottom: 0; }
 .diff-file { display: flex; flex: 1; min-width: 0; align-items: baseline; justify-content: space-between; gap: 12px; padding: 7px 12px; overflow-wrap: anywhere; white-space: pre-wrap; font-size: 13px; }
-.diff-action { flex-shrink: 0; margin: 3px 8px 3px 0; padding: 4px 8px; font-size: 12px; }
+button.diff-action { flex-shrink: 0; min-height: 0; margin: 0 12px 0 0; padding: 0; border: 0; border-radius: 0; background: transparent; color: var(--accent); font-size: 12px; font-weight: normal; }
+button.diff-action:enabled:hover { text-decoration: underline; }
 .diff-file > span { min-width: 0; }
 .diff-file small { flex-shrink: 0; }
-.diff-file[aria-current] { background: #e2ece6; font-weight: 600; }
-.diff-file small { color: #536355; font-weight: normal; }
+.diff-file-row.selected { background: #e2ece6; }
+.diff-file[aria-current] { font-weight: 600; }
+.diff-file small { color: #536355; font-size: 12px; font-weight: normal; }
 .diff-comparison-area { min-width: 0; width: calc(100% - 48px); max-width: 1080px; padding-left: 0; padding-right: 0; }
 #diff-section[data-layout="split"] .diff-comparison-area { max-width: none; }
 #diff-title { font-size: 16px; overflow-wrap: anywhere; white-space: pre-wrap; }

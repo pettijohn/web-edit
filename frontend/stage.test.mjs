@@ -65,6 +65,18 @@ for (const [comparison, action, label] of [["unstaged", "stage", "Stage"], ["sta
     const { page, requests, errors } = await open({ comparison });
     try {
       assert.equal(await page.locator("#diff-list a button").count(), 0);
+      assert.equal(await page.locator(".diff-file-row.selected").count(), 1);
+      assert.equal(await page.locator(".diff-file-row.selected").evaluate(row => getComputedStyle(row).backgroundColor), "rgb(226, 236, 230)");
+      assert.equal(await page.locator("a[aria-current]").evaluate(link => getComputedStyle(link).backgroundColor), "rgba(0, 0, 0, 0)");
+      const style = await page.locator(".diff-action").first().evaluate(button => {
+        const action = getComputedStyle(button);
+        const status = getComputedStyle(button.closest(".diff-file-row").querySelector("small"));
+        return { background: action.backgroundColor, border: action.borderTopWidth, weight: action.fontWeight, size: action.fontSize, statusSize: status.fontSize };
+      });
+      assert.equal(style.background, "rgba(0, 0, 0, 0)");
+      assert.equal(style.border, "0px");
+      assert.equal(style.weight, "400");
+      assert.equal(style.size, style.statusSize);
       await page.getByRole("button", { name: `${label} a.txt`, exact: true }).click();
       await settled(page, action === "stage" ? "File staged." : "File unstaged.");
       assert.equal(requests.length, 1);
@@ -75,6 +87,7 @@ for (const [comparison, action, label] of [["unstaged", "stage", "Stage"], ["sta
       assert.equal(await page.locator("#diff-list a").count(), 2);
       assert.equal(await page.locator("#diff-title").textContent(), "b.txt");
       assert.equal(await page.locator("#diff-list a[aria-current]").getAttribute("data-path"), "b.txt");
+      assert.equal(await page.locator(".diff-file-row.selected a").getAttribute("data-path"), "b.txt");
       assert.equal(await page.locator("#diff-list a[aria-current]").evaluate((link) => document.activeElement === link), true);
       assert.deepEqual(errors, []);
     } finally { await page.close(); }

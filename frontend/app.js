@@ -473,10 +473,10 @@ function renderDiff() {
     link.href = diffRoute(diff.folder, diff.comparison, link.dataset.path, diff.layout);
     if (entry.id === diff.entry?.id) link.setAttribute("aria-current", "true");
     link.append(element("span", "", entry.old_path && entry.new_path && entry.old_path !== entry.new_path ? `${entry.old_path} → ${entry.new_path}` : entryPath(entry)), element("small", "", ({ modified: "Modified", added: "Added", deleted: "Deleted", renamed: "Renamed", untracked: "Untracked", unmerged: "Unmerged", copied: "Copied", type_changed: "Type changed" })[entry.status] || entry.status));
-    const row = element("div", "diff-file-row");
+    const row = element("div", entry.id === diff.entry?.id ? "diff-file-row selected" : "diff-file-row");
     row.append(link);
     if (["stage", "unstage"].includes(entry.action)) {
-      const button = element("button", "secondary diff-action", entry.action === "stage" ? "Stage" : "Unstage");
+      const button = element("button", "diff-action", entry.action === "stage" ? "Stage" : "Unstage");
       button.setAttribute("aria-label", `${button.textContent} ${entryPath(entry)}`);
       button.addEventListener("click", () => changeGitEntry(entry, button));
       row.append(button);
