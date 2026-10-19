@@ -11,6 +11,7 @@ from starlette.routing import Mount, Route
 from starlette.staticfiles import StaticFiles
 
 from .files import IMAGE_LIMIT, TEXT_LIMIT, FileError, FileStore
+from .git import GitStore
 from .security import allowed_hosts_for, is_allowed_host
 
 STATIC = Path(__file__).parent / "static"
@@ -79,6 +80,7 @@ async def handle_error(request, error):
 def create_app(directory=".", *, host="127.0.0.1", allowed_hosts=()):
     trusted_hosts = allowed_hosts_for(host, allowed_hosts)
     store = FileStore(directory)
+    git_store = GitStore(store)
 
     def index(request):
         return FileResponse(
@@ -90,6 +92,27 @@ def create_app(directory=".", *, host="127.0.0.1", allowed_hosts=()):
 
     def browse(request):
         return JSONResponse(store.browse(request.query_params.get("path", "")))
+
+    def git_context(request):
+        return JSONResponse(git_store.context(request.query_params.get("path", "")))
+
+    def git_changes(request):
+        return JSONResponse(
+            git_store.changes(
+                request.query_params.get("path", ""),
+                request.query_params.get("comparison", "all"),
+            )
+        )
+
+    def git_file(request):
+        return JSONResponse(
+            git_store.file(
+                request.query_params.get("path", ""),
+                request.query_params.get("comparison", "all"),
+                request.query_params.get("entry"),
+                request.query_params.get("snapshot"),
+            )
+        )
 
     def read_text(request):
         return JSONResponse(store.text(request.query_params.get("path", "")))
@@ -156,6 +179,9 @@ def create_app(directory=".", *, host="127.0.0.1", allowed_hosts=()):
         routes=[
             Route("/", index),
             Route("/api/browse", browse),
+            Route("/api/git/context", git_context),
+            Route("/api/git/changes", git_changes),
+            Route("/api/git/file", git_file),
             Route("/api/text", read_text, methods=["GET"]),
             Route("/api/text", save_text, methods=["PUT"]),
             Route("/api/upload", upload, methods=["POST"]),
@@ -168,4 +194,5 @@ def create_app(directory=".", *, host="127.0.0.1", allowed_hosts=()):
     )
     app.add_middleware(BrowserProtection, allowed_hosts=trusted_hosts)
     app.state.store = store
+    app.state.git_store = git_store
     return app

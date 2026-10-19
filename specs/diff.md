@@ -218,6 +218,12 @@ Linked worktrees can keep Git metadata outside the startup boundary. The server 
 
 The first implementation permits no staging, restore, commit, or Git discard actions. Ordinary Save writes only the selected working-tree file. Git remains optional. No Git subprocess runs during application startup.
 
+## Platform support
+
+The implementation pins directory descriptors during Git reads to prevent path replacement from exposing files outside the startup boundary. This protection requires POSIX directory operations and an accessible descriptor filesystem.
+
+Linux uses `/proc/self/fd`. A verified `/dev/fd` path provides a fallback. Native macOS behavior still requires verification. Windows disables Diff with **Git diff is not supported on this platform**. Ordinary file operations remain available.
+
 ## Limits and refresh behavior
 
 Each source uses the existing 10 MiB text limit. The Git reader enforces this limit for blobs as well as disk files. The combined text response contains at most two permitted source documents.
