@@ -300,6 +300,10 @@ async function route() {
   if (!saving && diff && location.hash !== currentHash && location.hash.startsWith("#diff?") &&
       target.get("path") === diff.folder && target.get("comparison") === diff.comparison &&
       target.get("file") === entryPath(diff.entry || {}) && ["split", "unified"].includes(target.get("view"))) {
+    // Back can return to the visible file while another selection is still loading.
+    ++navigation;
+    diffAbort?.abort();
+    $("diff-section").inert = false;
     await switchDiffLayout(target.get("view"));
     return;
   }
@@ -459,7 +463,8 @@ function renderDiff() {
   $("diff-files").onclick = () => { location.hash = routeURL("browse", diff.folder); };
   for (const entry of diff.list.entries) {
     const link = element("a", "diff-file");
-    link.href = diffRoute(diff.folder, diff.comparison, entryPath(entry), diff.layout);
+    link.dataset.path = entryPath(entry);
+    link.href = diffRoute(diff.folder, diff.comparison, link.dataset.path, diff.layout);
     if (entry.id === diff.entry?.id) link.setAttribute("aria-current", "true");
     link.append(element("span", "", entry.old_path && entry.new_path && entry.old_path !== entry.new_path ? `${entry.old_path} → ${entry.new_path}` : entryPath(entry)), element("small", "", ({ modified: "Modified", added: "Added", deleted: "Deleted", renamed: "Renamed", untracked: "Untracked", unmerged: "Unmerged", copied: "Copied", type_changed: "Type changed" })[entry.status] || entry.status));
     $("diff-list").append(link);
@@ -546,6 +551,10 @@ async function switchDiffLayout(layout) {
   const scrollTop = merge ? merge.dom.scrollTop : diffEditor?.scrollDOM.scrollTop || 0;
   destroyDiffEditor();
   diff.layout = layout; preferredLayout = layout;
+  $("diff-layout").value = layout;
+  for (const link of $("diff-list").querySelectorAll("a")) {
+    link.href = diffRoute(diff.folder, diff.comparison, link.dataset.path, layout);
+  }
   try { localStorage.setItem("web-edit-diff-layout", layout); } catch { /* Keep the session preference. */ }
   if (state) createDiffEditor(state, scrollTop);
   updateDiffSaveState(); replaceDiffHash();
