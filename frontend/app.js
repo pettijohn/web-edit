@@ -20,6 +20,10 @@ const apiURL = (endpoint, path) => `./api/${endpoint}?path=${encodeURIComponent(
 let currentFolder = "", rootName = "Files", editor = null, editingPath = "", fileVersion = null;
 let savedText = "", isNew = false, saving = false, currentHash = "", navigation = 0;
 const language = new Compartment();
+const diffWrapping = new Compartment();
+let wrapDiff = false;
+try { wrapDiff = localStorage.getItem("web-edit-diff-wrap") === "true"; } catch { /* Use the session preference. */ }
+$("diff-wrap").checked = wrapDiff;
 let diff = null, diffEditor = null, merge = null, diffAbort = null, contextAbort = null;
 let preferredLayout = null;
 try { preferredLayout = localStorage.getItem("web-edit-diff-layout"); } catch { /* Session preference remains available. */ }
@@ -495,7 +499,7 @@ function renderDiffFile() {
   } else $("diff-editor").replaceChildren();
 }
 function diffExtensions(label, editable, previousState = null) {
-  return [basicSetup, languageFor(entryPath(diff.entry))[1], EditorState.readOnly.of(!editable),
+  return [basicSetup, languageFor(entryPath(diff.entry))[1], diffWrapping.of(wrapDiff ? EditorView.lineWrapping : []), EditorState.readOnly.of(!editable),
     EditorView.editable.of(editable),
     EditorView.contentAttributes.of({ "aria-label": label, spellcheck: "false", autocapitalize: "off", autocorrect: "off" }),
     keymap.of([{ key: "Mod-s", run: () => { saveDiff(); return true; } }]),
@@ -586,6 +590,13 @@ $("show-diff").addEventListener("click", () => { location.hash = diffRoute(curre
 $("diff-refresh").addEventListener("click", route);
 $("diff-comparison").addEventListener("change", () => { location.hash = diffRoute(diff?.folder ?? currentFolder, $("diff-comparison").value, "", diff?.layout || defaultLayout()); });
 $("diff-layout").addEventListener("change", () => switchDiffLayout($("diff-layout").value));
+$("diff-wrap").addEventListener("change", () => {
+  wrapDiff = $("diff-wrap").checked;
+  try { localStorage.setItem("web-edit-diff-wrap", String(wrapDiff)); } catch { /* Keep the session preference. */ }
+  for (const view of merge ? [merge.a, merge.b] : diffEditor ? [diffEditor] : []) {
+    view.dispatch({ effects: diffWrapping.reconfigure(wrapDiff ? EditorView.lineWrapping : []) });
+  }
+});
 $("diff-save").addEventListener("click", saveDiff);
 $("diff-copy").addEventListener("click", async () => {
   try { await copyText(diffEditor.state.doc.toString()); notify("Copied to the clipboard."); }

@@ -108,7 +108,7 @@ Git rename detection supplies old and new paths for each comparison. A rename do
 
 Both panes remain read-only in **Staged**. The view omits `revertControls` because the first implementation does not provide chunk restore actions. Text selection and copy remain available. Existing language support supplies syntax colors.
 
-Both layouts expand vertically with their contents. The page provides vertical scrolling without an inline vertical scroll area. Each comparison pane retains its own horizontal scrollbar. Long lines do not wrap. Horizontal scrolling remains independent. Cursor movement keeps the edited text visible.
+Both layouts expand vertically with their contents. The page provides vertical scrolling without an inline vertical scroll area. Each comparison pane retains its own horizontal scrollbar. Long lines do not wrap by default. A **Wrap lines** checkbox enables CodeMirror line wrapping in both layouts. The preference persists across visits. A wrap change preserves unsaved edits and undo history. Horizontal scrolling remains independent. Cursor movement keeps the edited text visible.
 
 CodeMirror aligns unchanged lines without custom vertical scroll synchronization. Browser tests verify line alignment, page scrolling, and the absence of horizontal overflow of the page.
 

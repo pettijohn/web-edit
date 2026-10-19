@@ -110,6 +110,30 @@ test("split panes expand vertically, scroll horizontally, and keep line alignmen
   } finally { await page.close(); }
 });
 
+test("line wrapping applies to both layouts and preserves edits and undo history", async () => {
+  const page = await open();
+  try {
+    await page.locator(".cm-merge-b .cm-line").first().click();
+    await page.keyboard.press("End");
+    await page.keyboard.insertText(" added text");
+    await page.locator("#diff-wrap").check();
+    await page.waitForFunction(() => [...document.querySelectorAll("#diff-editor .cm-scroller")].every(el => el.scrollWidth <= el.clientWidth + 1));
+    assert.equal(await page.locator("#diff-editor .cm-content.cm-lineWrapping").count(), 2);
+    assert.equal(await page.locator("#diff-save-state").textContent(), "Unsaved changes");
+    await page.locator("#diff-wrap").uncheck();
+    assert(await page.locator(".cm-merge-b .cm-scroller").evaluate(el => el.scrollWidth > el.clientWidth));
+    await page.locator("#diff-wrap").check();
+    await page.locator("#diff-layout").selectOption("unified");
+    assert.equal(await page.locator("#diff-editor .cm-content.cm-lineWrapping").count(), 1);
+    await page.locator("#diff-editor [contenteditable=true]").press("Control+z");
+    assert.equal(await page.locator("#diff-save-state").textContent(), "All changes saved");
+    await page.reload();
+    await page.waitForFunction(() => !document.querySelector("#diff-section").inert && document.querySelector("#diff-editor .cm-editor"));
+    assert(await page.locator("#diff-wrap").isChecked());
+    assert.equal(await page.locator("#diff-editor .cm-content.cm-lineWrapping").count(), 1);
+  } finally { await page.close(); }
+});
+
 test("mobile comparison retains page gutters without horizontal page overflow", async () => {
   const page = await open(390, "unified");
   try {
