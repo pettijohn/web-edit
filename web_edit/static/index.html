@@ -18,8 +18,9 @@
     <div id="notice" role="status" aria-live="polite" hidden></div>
     <section id="browser" aria-label="File browser">
       <div class="section-heading"><div><p class="eyebrow">WORKSPACE</p><h1>Files</h1></div>
-        <div class="actions"><button id="refresh" class="secondary">Refresh</button><button id="show-upload" class="secondary">Upload files</button><button id="new-file">New file</button></div>
+        <div class="actions"><button id="refresh" class="secondary">Refresh</button><button id="show-diff" class="secondary" aria-describedby="git-context" disabled>Diff</button><button id="show-upload" class="secondary">Upload files</button><button id="new-file">New file</button></div>
       </div>
+      <p id="git-context" class="hint" role="status">Checking repository…</p>
       <nav id="breadcrumbs" aria-label="Folder breadcrumb"><a href="#browse?path=">Files</a></nav>
       <div class="list-heading"><span>Name</span><span>Size</span><span>Modified</span><span></span></div>
       <div id="file-list" aria-live="polite">
@@ -41,6 +42,21 @@
       <div class="editor-meta"><span id="save-state" role="status">Unsaved</span><span>UTF-8 · <span id="language-label">Plain text</span></span></div>
       <div id="editor"></div>
       <p class="hint">Save with <kbd>Ctrl</kbd>/<kbd>⌘</kbd> + <kbd>S</kbd>. Your changes stay here until you save.</p>
+    </section>
+    <section id="diff-section" aria-label="Git diff" hidden>
+      <div class="section-heading"><div><button id="diff-files" class="secondary">← Files</button><h1>Repository changes</h1><p id="diff-repo" class="hint"></p></div>
+        <div class="actions"><button id="diff-refresh" class="secondary">Refresh</button><button id="diff-copy" class="secondary" hidden>Copy edits</button><a id="diff-open" class="button secondary" hidden>Open in editor</a><button id="diff-save" hidden>Save</button></div>
+      </div>
+      <div class="diff-controls">
+        <label>Changes <select id="diff-comparison"><option value="all">All changes</option><option value="unstaged">Unstaged</option><option value="staged">Staged</option></select></label>
+        <label>View <select id="diff-layout"><option value="split">Side by side</option><option value="unified">Unified</option></select></label>
+        <button id="diff-previous" class="secondary" disabled>Previous change</button><button id="diff-next" class="secondary" disabled>Next change</button>
+        <span id="diff-save-state" role="status"></span>
+      </div>
+      <div class="diff-workspace">
+        <nav id="diff-list" aria-label="Changed files"></nav>
+        <div class="diff-comparison-area"><h2 id="diff-title"></h2><div id="diff-metadata" class="hint"></div><div id="diff-labels"></div><div id="diff-editor"></div></div>
+      </div>
     </section>
     <section id="viewer" aria-label="File preview" hidden>
       <div class="section-heading"><div class="editor-title"><button id="viewer-back" class="secondary">← Files</button><h1 id="viewer-title"></h1></div>
