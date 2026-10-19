@@ -71,7 +71,7 @@ test("split comparison fills desktop width while controls and file list stay cen
   } finally { await page.close(); }
 });
 
-test("split panes scroll horizontally without widening the page and keep vertical alignment", async () => {
+test("split panes expand vertically, scroll horizontally, and keep line alignment", async () => {
   const page = await open();
   try {
     const a = page.locator(".cm-merge-a .cm-scroller");
@@ -91,10 +91,18 @@ test("split panes scroll horizontally without widening the page and keep vertica
     await page.waitForFunction(() => document.querySelector(".cm-merge-b .cm-scroller").scrollLeft > 0);
     await page.locator("#diff-title").click();
     await page.waitForTimeout(100);
-    await b.evaluate(el => { el.scrollTop = 1500; });
-    await page.waitForTimeout(200);
-    const tops = await Promise.all([a, b].map(pane => pane.evaluate(el => el.scrollTop)));
-    assert(Math.abs(tops[0] - tops[1]) < 2, `vertical scroll positions differ: ${tops}`);
+    for (const pane of [a, b]) {
+      assert(await pane.evaluate(el => el.clientHeight > innerHeight));
+      assert(await pane.evaluate(el => el.scrollHeight <= el.clientHeight + 1));
+    }
+    const before = await page.evaluate(() => scrollY);
+    await b.hover();
+    await page.mouse.wheel(0, 500);
+    await page.waitForFunction(top => scrollY > top, before);
+    assert.equal(await a.evaluate(el => el.scrollTop), 0);
+    assert.equal(await b.evaluate(el => el.scrollTop), 0);
+    await page.waitForTimeout(300);
+    await page.locator("#diff-editor").evaluate(el => window.scrollTo(0, el.getBoundingClientRect().top + window.scrollY + 1800));
     const markers = page.locator("#diff-editor .cm-line").filter({ hasText: "alignment marker" });
     await page.waitForFunction(() => [...document.querySelectorAll("#diff-editor .cm-line")].filter(el => el.textContent === "alignment marker").length === 2);
     const bounds = await Promise.all([markers.nth(0).boundingBox(), markers.nth(1).boundingBox()]);
@@ -108,6 +116,9 @@ test("mobile comparison retains page gutters without horizontal page overflow", 
     const box = await page.locator(".diff-comparison-area").boundingBox();
     assert.equal(box.x, 14);
     assert.equal(box.width, 390 - 28);
+    const unifiedScroller = page.locator("#diff-editor > .cm-editor > .cm-scroller");
+    assert(await unifiedScroller.evaluate(el => el.clientHeight > innerHeight));
+    assert(await unifiedScroller.evaluate(el => el.scrollHeight <= el.clientHeight + 1));
     assert.equal((await page.locator("#diff-editor").boundingBox()).x, 14);
     assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
     await page.locator("#diff-layout").selectOption("split");

@@ -101,14 +101,10 @@ select { min-height: 44px; font: inherit; color: inherit; background: white; bor
 #diff-labels.unified > span:first-child::after { content: " →"; }
 #diff-editor { border: 1px solid var(--border); background: white; }
 #diff-editor:empty, #diff-labels:empty { display: none; }
-/* Keep MergeView's alignment spacers, but scroll each bounded editor. JavaScript synchronizes only the vertical offset. */
-#diff-editor .cm-mergeView { height: 65vh; overflow: hidden; }
-#diff-editor .cm-mergeViewEditors, #diff-editor .cm-mergeViewEditor { height: 100%; min-width: 0; }
-/* MergeView's base theme forces auto height and visible vertical overflow with !important. */
-#diff-editor .cm-mergeView .cm-editor { height: 100% !important; min-height: 0; overflow: hidden !important; }
-#diff-editor .cm-mergeView .cm-scroller { height: 100% !important; overflow: scroll !important; }
-#diff-editor > .cm-editor { height: 65vh; min-height: 0; }
-#diff-editor > .cm-editor > .cm-scroller { overflow: auto; }
+/* Let the page scroll vertically. Each full-height pane retains horizontal scrolling. */
+#diff-editor .cm-mergeViewEditors, #diff-editor .cm-mergeViewEditor { min-width: 0; }
+#diff-editor .cm-editor { min-height: 0; }
+#diff-editor .cm-scroller { overflow-x: auto; }
 #diff-editor .cm-collapsedLines { cursor: pointer; }
 @media (max-width: 640px) {
   .app-header { padding: 14px 0; }
