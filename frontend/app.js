@@ -20,7 +20,7 @@ const apiURL = (endpoint, path) => `./api/${endpoint}?path=${encodeURIComponent(
 let currentFolder = "", rootName = "Files", editor = null, editingPath = "", fileVersion = null;
 let savedText = "", isNew = false, saving = false, currentHash = "", navigation = 0;
 const language = new Compartment();
-let diff = null, diffEditor = null, merge = null, diffAbort = null, contextAbort = null;
+let diff = null, diffEditor = null, merge = null, diffAbort = null, contextAbort = null, diffScrollAbort = null;
 let preferredLayout = null;
 try { preferredLayout = localStorage.getItem("web-edit-diff-layout"); } catch { /* Session preference remains available. */ }
 if (!["split", "unified"].includes(preferredLayout)) preferredLayout = null;
@@ -401,6 +401,7 @@ async function discoverGit(path, token) {
   }
 }
 function destroyDiffEditor() {
+  diffScrollAbort?.abort(); diffScrollAbort = null;
   if (merge) merge.destroy();
   else diffEditor?.destroy();
   merge = null; diffEditor = null;
@@ -457,6 +458,7 @@ async function loadDiff(folder, params, token, nextPath = "") {
   }
 }
 function renderDiff() {
+  $("diff-section").dataset.layout = diff.layout;
   $("diff-repo").textContent = `Repository: ${diff.list.repo_path || "."}`;
   $("diff-comparison").value = diff.comparison; $("diff-layout").value = diff.layout;
   $("diff-list").replaceChildren();
@@ -506,13 +508,24 @@ function createDiffEditor(previousState = null, scrollTop = 0) {
   const file = diff.file;
   const b = { doc: previousState?.doc || normalise(file.new.content), selection: previousState?.selection,
     extensions: diffExtensions(file.new.label, file.editable, previousState) };
+  $("diff-section").dataset.layout = diff.layout;
   $("diff-labels").className = diff.layout;
   $("diff-labels").replaceChildren(element("span", "", file.old.label), element("span", "diff-new-label", file.new.label));
   if (diff.layout === "split") {
     merge = new MergeView({ a: { doc: normalise(file.old.content), extensions: diffExtensions(file.old.label, false) }, b,
       parent: $("diff-editor"), collapseUnchanged: { margin: 3 }, diffConfig });
     diffEditor = merge.b;
-    merge.dom.scrollTop = scrollTop;
+    diffScrollAbort = new AbortController();
+    const panes = [merge.a.scrollDOM, merge.b.scrollDOM];
+    // MergeView's spacers give corresponding lines the same vertical offset.
+    // Leave scrollLeft independent so either pane can reveal long lines.
+    for (const pane of panes) pane.addEventListener("scroll", () => {
+      const other = panes[pane === panes[0] ? 1 : 0];
+      if (other.scrollTop !== pane.scrollTop) other.scrollTop = pane.scrollTop;
+    }, { passive: true, signal: diffScrollAbort.signal });
+    diffEditor.requestMeasure({ read: () => scrollTop, write: (top) => {
+      for (const pane of panes) pane.scrollTop = top;
+    } });
   } else {
     b.extensions.push(unifiedMergeView({ original: normalise(file.old.content), mergeControls: false, allowInlineDiffs: false,
       collapseUnchanged: { margin: 3 }, diffConfig }));
@@ -548,9 +561,10 @@ function updateDiffSaveState() {
 async function switchDiffLayout(layout) {
   if (!diff || saving) return;
   const state = diffEditor?.state;
-  const scrollTop = merge ? merge.dom.scrollTop : diffEditor?.scrollDOM.scrollTop || 0;
+  const scrollTop = diffEditor?.scrollDOM.scrollTop || 0;
   destroyDiffEditor();
   diff.layout = layout; preferredLayout = layout;
+  $("diff-section").dataset.layout = layout;
   $("diff-layout").value = layout;
   for (const link of $("diff-list").querySelectorAll("a")) {
     link.href = diffRoute(diff.folder, diff.comparison, link.dataset.path, layout);

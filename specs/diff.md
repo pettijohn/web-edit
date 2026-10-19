@@ -68,7 +68,9 @@ The section contains these controls:
 - A list of changed files
 - A comparison area for the selected file.
 
-On wide screens, the list appears beside the comparison area. On narrow screens, the list appears above it. Each entry shows a repository-relative path and a text status, such as **Modified** or **Deleted**. A rename entry shows both paths.
+The changed-file list appears above the comparison area on all screens. Compact rows show a repository-relative path and a text status. A rename entry shows both paths. The list has a maximum height of 160px and scrolls vertically.
+
+The header, navigation, controls, and changed-file list retain a centered container with a maximum width of 1128px. The side-by-side comparison uses the viewport width with 24px gutters. Mobile uses 14px gutters. The unified comparison retains the centered width limit.
 
 The heading states **Repository changes**. The repository path makes the scope explicit after entry from a nested folder.
 
@@ -106,7 +108,7 @@ Git rename detection supplies old and new paths for each comparison. A rename do
 
 Both panes remain read-only in **Staged**. The view omits `revertControls` because the first implementation does not provide chunk restore actions. Text selection and copy remain available. Existing language support supplies syntax colors.
 
-The comparison area has a bounded height and its own scroll area. The implementation must verify alignment and scroll behavior with long files. It must not assume that the existing editor CSS fits `MergeView`.
+Each comparison pane has a bounded height and its own horizontal scrollbar. Long lines do not wrap. Vertical scrolling stays synchronized between panes. Horizontal scrolling remains independent. Cursor movement keeps the edited text visible. Browser tests verify line alignment and prevent horizontal overflow of the page.
 
 ### Unified
 

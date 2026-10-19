@@ -9,11 +9,13 @@ button:hover, .button:hover { filter: brightness(.93); text-decoration: none; }
 button:disabled { cursor: default; opacity: .5; }
 button.secondary, .button.secondary { background: white; color: #394657; border-color: var(--border); }
 button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible, .cm-collapsedLines:focus-visible { outline: 3px solid #74b6ff; outline-offset: 3px; }
-.app-header { display: flex; justify-content: space-between; align-items: center; padding: 20px max(24px, calc((100% - 1080px) / 2)); gap: 20px; border-bottom: 1px solid var(--border); background: white; }
+.app-header { padding: 20px 0; border-bottom: 1px solid var(--border); background: white; }
+.content-container { width: 100%; max-width: 1128px; margin-left: auto; margin-right: auto; padding-left: 24px; padding-right: 24px; }
+.header-content { display: flex; justify-content: space-between; align-items: center; gap: 20px; }
 .brand { display: flex; align-items: center; gap: 10px; font-size: 19px; font-weight: 700; color: #202b3a; white-space: nowrap; }
 .brand-icon { background: #e2ece6; padding: 8px 6px; border-radius: 8px; color: var(--accent); font-size: 14px; letter-spacing: -1px; }
 .root-label { color: #697687; font: 13px ui-monospace, monospace; overflow-wrap: anywhere; }
-main { max-width: 1128px; margin: 40px auto; padding: 0 24px; }
+main { margin: 40px 0; }
 .section-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 24px; }
 h1 { margin: 0; font-size: 30px; font-weight: 650; letter-spacing: -.6px; overflow-wrap: anywhere; }
 h2 { margin: 0; font-size: 22px; }
@@ -81,33 +83,39 @@ select { min-height: 44px; font: inherit; color: inherit; background: white; bor
 .diff-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-bottom: 18px; }
 .diff-controls label { display: flex; gap: 8px; align-items: center; }
 #diff-save-state { font-size: 13px; }
-.diff-workspace { display: grid; grid-template-columns: minmax(160px, 23%) minmax(0, 1fr); gap: 18px; }
-#diff-list { max-height: 70vh; overflow: auto; border: 1px solid var(--border); border-radius: 8px; background: white; }
-.diff-file { display: flex; flex-direction: column; gap: 5px; padding: 12px; border-bottom: 1px solid var(--border); overflow-wrap: anywhere; white-space: pre-wrap; font-size: 13px; }
+#diff-list { max-height: 160px; overflow: auto; border: 1px solid var(--border); border-radius: 8px; background: white; margin-bottom: 18px; }
+#diff-list:empty { display: none; }
+.diff-file { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding: 7px 12px; border-bottom: 1px solid var(--border); overflow-wrap: anywhere; white-space: pre-wrap; font-size: 13px; }
+.diff-file:last-child { border-bottom: 0; }
+.diff-file > span { min-width: 0; }
+.diff-file small { flex-shrink: 0; }
 .diff-file[aria-current] { background: #e2ece6; font-weight: 600; }
 .diff-file small { color: #536355; font-weight: normal; }
-.diff-comparison-area { min-width: 0; }
+.diff-comparison-area { min-width: 0; width: calc(100% - 48px); max-width: 1080px; padding-left: 0; padding-right: 0; }
+#diff-section[data-layout="split"] .diff-comparison-area { max-width: none; }
 #diff-title { font-size: 16px; overflow-wrap: anywhere; white-space: pre-wrap; }
 #diff-metadata p { margin: 8px 0; overflow-wrap: anywhere; }
 #diff-labels { display: flex; gap: 16px; padding: 10px; background: #edf1f3; font-size: 12px; }
-#diff-labels.split > span { width: 50%; }
+#diff-labels.split { gap: 0; }
+#diff-labels.split > span { width: 50%; min-width: 0; overflow-wrap: anywhere; }
 #diff-labels.unified > span:first-child::after { content: " →"; }
 #diff-editor { border: 1px solid var(--border); background: white; }
 #diff-editor:empty, #diff-labels:empty { display: none; }
-/* MergeView aligns both documents in a single scroll container. Do not give its panes independent vertical scrolling. */
-#diff-editor .cm-mergeView { height: 65vh; overflow: auto; }
-#diff-editor .cm-mergeView .cm-editor { height: auto; min-height: 65vh; }
-#diff-editor .cm-mergeView .cm-scroller { overflow: visible; }
+/* Keep MergeView's alignment spacers, but scroll each bounded editor. JavaScript synchronizes only the vertical offset. */
+#diff-editor .cm-mergeView { height: 65vh; overflow: hidden; }
+#diff-editor .cm-mergeViewEditors, #diff-editor .cm-mergeViewEditor { height: 100%; min-width: 0; }
+/* MergeView's base theme forces auto height and visible vertical overflow with !important. */
+#diff-editor .cm-mergeView .cm-editor { height: 100% !important; min-height: 0; overflow: hidden !important; }
+#diff-editor .cm-mergeView .cm-scroller { height: 100% !important; overflow: scroll !important; }
 #diff-editor > .cm-editor { height: 65vh; min-height: 0; }
 #diff-editor > .cm-editor > .cm-scroller { overflow: auto; }
 #diff-editor .cm-collapsedLines { cursor: pointer; }
-@media (max-width: 899px) {
-  .diff-workspace { grid-template-columns: minmax(0, 1fr); }
-  #diff-list { max-height: 24vh; }
-}
 @media (max-width: 640px) {
-  .app-header { padding: 14px 16px; }
-  main { margin-top: 24px; padding: 0 14px; }
+  .app-header { padding: 14px 0; }
+  .content-container { padding-left: 14px; padding-right: 14px; }
+  .header-content { padding-left: 16px; padding-right: 16px; }
+  .diff-comparison-area { width: calc(100% - 28px); padding-left: 0; padding-right: 0; }
+  main { margin-top: 24px; }
   .section-heading { align-items: flex-start; flex-wrap: wrap; gap: 18px; }
   .actions { width: 100%; }
   .actions > * { flex: 1; }
