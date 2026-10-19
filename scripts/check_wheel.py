@@ -99,8 +99,16 @@ if shutil.which("git"):
             assert pair.status_code == 200, pair.text
             assert pair.json()["new"]["content"] == "wheel diff works\n"
             assert pair.json()["editable"] is True
+            unstaged = client.get("/api/git/changes", params={"path": "project", "comparison": "unstaged"}).json()
+            staged = client.post("/api/git/action", headers={"X-Web-Edit": "1"}, json={"path": "project", "comparison": "unstaged", "entry": unstaged["entries"][0]["id"], "snapshot": unstaged["snapshot"], "action": "stage"})
+            assert staged.status_code == 200, staged.text
+            assert client.get("/api/git/changes", params={"path": "project", "comparison": "unstaged"}).json()["entries"] == []
+            staged_list = client.get("/api/git/changes", params={"path": "project", "comparison": "staged"}).json()
+            unstaged_result = client.post("/api/git/action", headers={"X-Web-Edit": "1"}, json={"path": "project", "comparison": "staged", "entry": staged_list["entries"][0]["id"], "snapshot": staged_list["snapshot"], "action": "unstage"})
+            assert unstaged_result.status_code == 200, unstaged_result.text
+            assert Path(repository, "new.txt").read_text() == "wheel diff works\n"
 assert CliRunner().invoke(cli, ["--help"]).exit_code == 0
-print("Wheel verified: isolated installation, bundled CodeMirror, assets, CLI, create/edit/download/upload.")
+print("Wheel verified: isolated installation, bundled CodeMirror, assets, CLI, file operations, and Git actions when Git is available.")
 """,
         ],
         cwd=directory,

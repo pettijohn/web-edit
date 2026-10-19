@@ -85,8 +85,10 @@ select { min-height: 44px; font: inherit; color: inherit; background: white; bor
 #diff-save-state { font-size: 13px; }
 #diff-list { max-height: 160px; overflow: auto; border: 1px solid var(--border); border-radius: 8px; background: white; margin-bottom: 18px; }
 #diff-list:empty { display: none; }
-.diff-file { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding: 7px 12px; border-bottom: 1px solid var(--border); overflow-wrap: anywhere; white-space: pre-wrap; font-size: 13px; }
-.diff-file:last-child { border-bottom: 0; }
+.diff-file-row { display: flex; align-items: center; border-bottom: 1px solid var(--border); }
+.diff-file-row:last-child { border-bottom: 0; }
+.diff-file { display: flex; flex: 1; min-width: 0; align-items: baseline; justify-content: space-between; gap: 12px; padding: 7px 12px; overflow-wrap: anywhere; white-space: pre-wrap; font-size: 13px; }
+.diff-action { flex-shrink: 0; margin: 3px 8px 3px 0; padding: 4px 8px; font-size: 12px; }
 .diff-file > span { min-width: 0; }
 .diff-file small { flex-shrink: 0; }
 .diff-file[aria-current] { background: #e2ece6; font-weight: 600; }

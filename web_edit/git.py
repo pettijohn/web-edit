@@ -1,13 +1,16 @@
-"""Read-only Git comparisons within a FileStore's startup boundary."""
+"""Git comparisons and index actions within a FileStore's startup boundary."""
 
 import hashlib
 import json
 import os
 import selectors
+import secrets
 import signal
 import stat
 import subprocess
 import time
+import tempfile
+from contextlib import contextmanager
 from contextvars import ContextVar
 from functools import wraps
 from pathlib import Path, PurePosixPath
@@ -19,6 +22,7 @@ OUTPUT_LIMIT = 16 * 1024 * 1024
 ENTRY_LIMIT = 10_000
 CHANGED = "Repository changed. Refresh the diff"
 UNSUPPORTED_PLATFORM = "Git diff is not supported on this platform"
+FILTERED_STAGE = "Files with Git filters must be staged outside web-edit."
 
 
 def digest(data):
@@ -38,13 +42,15 @@ def pinned_operation(method):
             return method(self, *args, **kwargs)
         directories = {}
         token = self._directories.set(directories)
+        repositories_token = self._repositories.set({})
         try:
             result = method(self, *args, **kwargs)
-            for path, fd in directories.items():
-                self._validate_directory(path, fd)
+            for (path, metadata), fd in directories.items():
+                self._validate_directory(path, fd, metadata=metadata)
             return result
         finally:
             self._directories.reset(token)
+            self._repositories.reset(repositories_token)
             for fd in directories.values():
                 os.close(fd)
 
@@ -57,9 +63,10 @@ class GitStore:
         info = store.root.stat()
         self._startup_identity = (info.st_dev, info.st_ino)
         self._directories = ContextVar("git_directories", default=None)
+        self._repositories = ContextVar("git_repositories", default=None)
 
-    def _open_directory(self, folder):
-        """Walk from / without following links, including startup-root ancestors."""
+    def _open_directory(self, folder, *, metadata=False):
+        """Walk without links; only Git-derived metadata can be outside root."""
         if (
             os.name != "posix"
             or not all(
@@ -71,7 +78,11 @@ class GitStore:
         ):
             raise GitFailure(UNSUPPORTED_PLATFORM, 503)
         folder = Path(folder)
-        if ".." in folder.parts or not folder.is_relative_to(self.store.root):
+        if (
+            not folder.is_absolute()
+            or ".." in folder.parts
+            or (not metadata and not folder.is_relative_to(self.store.root))
+        ):
             raise FileError("Paths must stay inside the root folder.", 403)
         flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
         fd = os.open("/", flags)
@@ -98,8 +109,8 @@ class GitStore:
             os.close(fd)
             raise
 
-    def _validate_directory(self, folder, expected):
-        actual = self._open_directory(folder)
+    def _validate_directory(self, folder, expected, *, metadata=False):
+        actual = self._open_directory(folder, metadata=metadata)
         try:
             before, after = os.fstat(expected), os.fstat(actual)
             if (before.st_dev, before.st_ino) != (after.st_dev, after.st_ino):
@@ -107,19 +118,34 @@ class GitStore:
         finally:
             os.close(actual)
 
-    def _pin_directory(self, folder):
+    def _pin_directory(self, folder, *, metadata=False):
         folder = Path(folder)
         directories = self._directories.get()
-        if folder not in directories:
-            directories[folder] = self._open_directory(folder)
-        fd = directories[folder]
-        self._validate_directory(folder, fd)
+        key = (folder, metadata)
+        if key not in directories:
+            directories[key] = self._open_directory(folder, metadata=metadata)
+        fd = directories[key]
+        self._validate_directory(folder, fd, metadata=metadata)
         return fd
 
     @pinned_operation
-    def _run(self, folder, *args, limit=OUTPUT_LIMIT):
+    def _run(self, folder, *args, limit=OUTPUT_LIMIT, input=None, index_file=None, conversion=None, objects_fd=None):
         fd = self._pin_directory(folder)
-        result = self._execute(fd, *args, limit=limit)
+        options = {} if index_file is None else {"index_file": index_file}
+        if conversion is not None:
+            options["conversion"] = conversion
+        if objects_fd is not None:
+            options["objects_fd"] = objects_fd
+        if input is None:
+            result = self._execute(fd, *args, limit=limit, **options)
+        else:
+            if len(input) > OUTPUT_LIMIT:
+                raise FileError("Git action input exceeds the limit.", 413)
+            # A bounded temporary file avoids stdin/stdout pipe deadlocks.
+            with tempfile.TemporaryFile() as source:
+                source.write(input)
+                source.seek(0)
+                result = self._execute(fd, *args, limit=limit, source=source, **options)
         self._validate_directory(folder, fd)
         return result
 
@@ -139,7 +165,7 @@ class GitStore:
                 return path
         raise GitFailure(UNSUPPORTED_PLATFORM, 503)
 
-    def _execute(self, fd, *args, limit=OUTPUT_LIMIT):
+    def _execute(self, fd, *args, limit=OUTPUT_LIMIT, source=None, index_file=None, conversion=None, objects_fd=None):
         # Never inherit repository, object, config-injection, or tracing overrides.
         env = {
             key: value
@@ -156,6 +182,24 @@ class GitStore:
             GIT_PAGER="cat",
             LC_ALL="C",
         )
+        inherited_fds = (fd,)
+        if index_file is not None:
+            index_fd, name = index_file
+            env["GIT_INDEX_FILE"] = f"{self._fd_cwd(index_fd)}/{name}"
+            inherited_fds += (index_fd,)
+        if objects_fd is not None:
+            env["GIT_OBJECT_DIRECTORY"] = self._fd_cwd(objects_fd)
+            inherited_fds += (objects_fd,)
+        if conversion is not None:
+            # Conversion gets no live repository/system/global configuration.
+            # Only explicitly copied built-in settings can affect this process.
+            env.update(
+                GIT_DIR=str(conversion),
+                GIT_WORK_TREE=self._fd_cwd(fd),
+                GIT_CONFIG_NOSYSTEM="1",
+                GIT_CONFIG_SYSTEM=os.devnull,
+                GIT_CONFIG_GLOBAL=os.devnull,
+            )
         command = [
             "git",
             "--no-pager",
@@ -172,12 +216,12 @@ class GitStore:
         try:
             process = subprocess.Popen(
                 command,
-                stdin=subprocess.DEVNULL,
+                stdin=source if source is not None else subprocess.DEVNULL,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 env=env,
                 cwd=self._fd_cwd(fd),
-                pass_fds=(fd,),
+                pass_fds=inherited_fds,
                 start_new_session=True,
             )
         except FileNotFoundError:
@@ -244,6 +288,7 @@ class GitStore:
             # Apply the same no-symlink rule as ordinary filesystem operations.
             self.store.path(root.relative_to(self.store.root).as_posix())
             self._pin_directory(root)
+            self._authorize_metadata(root)
             return root, None
         except GitFailure as error:
             return None, str(error)
@@ -355,7 +400,7 @@ class GitStore:
             os.close(parent)
 
     @pinned_operation
-    def _state(self, root, comparison):
+    def _state(self, root, comparison, *, actions=True):
         if comparison not in {"all", "unstaged", "staged"}:
             raise FileError("Choose all, unstaged, or staged changes.")
         # --verify --quiet also distinguishes an unborn branch without parsing stderr.
@@ -380,26 +425,9 @@ class GitStore:
                 fields, name = item.split(b"\t", 1)
                 if fields.split()[2] != b"0":
                     conflicts.add(self._name(name))
-        # Diff can invoke clean/process filters even with --no-ext-diff and
-        # --no-textconv. Override every configured driver before reading disk.
-        config_keys = self._run(root, "config", "--null", "--name-only", "--list")
-        drivers = set()
-        for key in config_keys.split(b"\0"):
-            if key.startswith(b"filter.") and key.rsplit(b".", 1)[-1] in {
-                b"clean",
-                b"process",
-                b"required",
-            }:
-                drivers.add(os.fsdecode(key.rsplit(b".", 1)[0]))
-        args = []
-        for driver in sorted(drivers):
-            for setting, value in (
-                ("clean", ""),
-                ("process", ""),
-                ("required", "false"),
-            ):
-                args += ["-c", f"{driver}.{setting}={value}"]
-        args += [
+        # Even raw diff performs clean conversion. Configuration isolation
+        # below prevents external filters, including concurrently added drivers.
+        args = [
             "diff",
             "--raw",
             "-z",
@@ -413,7 +441,16 @@ class GitStore:
             args += ["--cached", base]
         elif comparison == "all":
             args += [base]
-        raw = self._run(root, *args, "--")
+        # Diff also performs clean conversion. Use the same immutable safe
+        # configuration as staging, but read the real pinned index/objects.
+        with self._conversion_repository(root, len(base) == 64) as (folder, options):
+            index_path = self._git_path(root, "index")
+            objects_path = self._git_path(root, "objects")
+            raw = self._run(
+                root, *options, *args, "--", conversion=folder,
+                index_file=(self._pin_directory(index_path.parent, metadata=True), index_path.name),
+                objects_fd=self._pin_directory(objects_path, metadata=True),
+            )
         parts = raw.split(b"\0")
         entries = []
         i = 0
@@ -480,6 +517,20 @@ class GitStore:
                 entry["status"] = "unmerged"
             unique[key] = entry
         entries = [unique[key] for key in sorted(unique)]
+        unstaged_paths = set()
+        if actions and comparison == "all":
+            unstaged, _ = self._state(root, "unstaged", actions=False)
+            unstaged_paths = {
+                name
+                for item in unstaged
+                for name in (item["old_path"], item["new_path"])
+                if name is not None
+            }
+        filtered = set()
+        if actions and comparison != "staged":
+            filtered = self._filtered_paths(
+                root, [item["new_path"] for item in entries if item["new_path"]],
+            )
         disk = []
         for entry in entries:
             if comparison != "staged":
@@ -503,6 +554,25 @@ class GitStore:
                         entry["new_mode"] = (
                             "100755" if state["stat"][2] & 0o111 else "100644"
                         )
+            if actions:
+                paths = {entry["old_path"], entry["new_path"]} - {None}
+                supported = (
+                    entry["status"] != "unmerged"
+                    and not paths.intersection(conflicts)
+                    and {entry["old_mode"], entry["new_mode"]}
+                    <= {"000000", "100644", "100755"}
+                    and (comparison == "staged" or state["kind"] in {"regular", "missing"})
+                )
+                entry["action"] = None
+                if supported:
+                    entry["action"] = (
+                        "stage"
+                        if comparison == "unstaged"
+                        or (comparison == "all" and paths.intersection(unstaged_paths))
+                        else "unstage"
+                    )
+                    if entry["action"] == "stage" and entry["new_path"] in filtered:
+                        entry["action"] = None
             public = {
                 key: value for key, value in entry.items() if not key.startswith("_")
             }
@@ -516,6 +586,7 @@ class GitStore:
                     [
                         str(root),
                         self._directory_identity(root),
+                        self._metadata_identity(root),
                         comparison,
                         entries,
                         disk,
@@ -548,6 +619,296 @@ class GitStore:
                 for entry in entries
             ],
         }
+
+    def _metadata_text(self, folder, name):
+        fd = self._pin_directory(folder, metadata=True)
+        source = os.open(
+            name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=fd,
+        )
+        with os.fdopen(source, "rb") as stream:
+            info = os.fstat(stream.fileno())
+            if not stat.S_ISREG(info.st_mode) or info.st_size > 8192:
+                raise FileError("Invalid worktree registration.", 403)
+            data = stream.read(8193)
+        if len(data) > 8192 or b"\0" in data:
+            raise FileError("Invalid worktree registration.", 403)
+        return os.fsdecode(data.removesuffix(b"\n"))
+
+    def _authorize_metadata(self, root):
+        gitdir = Path(os.fsdecode(
+            self._run(root, "rev-parse", "--absolute-git-dir").removesuffix(b"\n")
+        ))
+        common = Path(os.fsdecode(
+            self._run(root, "rev-parse", "--path-format=absolute", "--git-common-dir")
+            .removesuffix(b"\n")
+        ))
+        repositories = self._repositories.get()
+        identity = (gitdir, common)
+        if root in repositories and repositories[root] != identity:
+            raise FileError(CHANGED, 409)
+        if all(path.is_relative_to(self.store.root) for path in identity):
+            self._pin_directory(gitdir, metadata=True)
+            self._pin_directory(common, metadata=True)
+            repositories[root] = identity
+            return
+        reason = "External Git metadata is not registered to this worktree."
+        # A .git file alone is not authorization to mutate another repository.
+        # External metadata must be an actual linked-worktree registration in
+        # the common repository, with a backlink to this exact worktree.
+        if gitdir.parent != common / "worktrees" or gitdir.name in {"", ".", ".."}:
+            raise FileError(reason, 403)
+        try:
+            backlink = Path(self._metadata_text(gitdir, "gitdir"))
+            registered_common = self._metadata_text(gitdir, "commondir")
+            common_path = Path(os.path.normpath(gitdir / registered_common))
+            pointer = self._metadata_text(root, ".git")
+        except OSError:
+            raise FileError(reason, 403)
+        if not pointer.startswith("gitdir: "):
+            raise FileError(reason, 403)
+        target = Path(pointer[len("gitdir: "):])
+        if not target.is_absolute():
+            target = root / target
+        if (
+            backlink != root / ".git"
+            or common_path != common
+            or Path(os.path.normpath(target)) != gitdir
+        ):
+            raise FileError(reason, 403)
+        self._pin_directory(common, metadata=True)
+        repositories[root] = identity
+
+    def _metadata_identity(self, root):
+        result = []
+        for path in self._repositories.get()[root]:
+            info = os.fstat(self._pin_directory(path, metadata=True))
+            result.append([str(path), info.st_dev, info.st_ino])
+        return result
+
+    def _git_path(self, root, name):
+        # Never rediscover a mutation target through a live .git pointer. Every
+        # path comes from the metadata identity authorized for this request.
+        gitdir, common = self._repositories.get()[root]
+        if name == "index":
+            return gitdir / "index"
+        if name in {"objects", "info/attributes"}:
+            return common / name
+        raise FileError("Invalid Git metadata path.")
+
+    @contextmanager
+    def _conversion_repository(self, root, sha256=False):
+        # Enumerating and disabling filter drivers is insufficient here: a new
+        # driver could be configured between enumeration and process startup.
+        # A private repository has only built-in conversion settings, so even
+        # concurrently changed attributes cannot select an external command.
+        allowed = {
+            b"core.autocrlf", b"core.eol", b"core.safecrlf",
+            b"core.checkroundtripencoding", b"core.attributesfile",
+            b"core.filemode", b"core.symlinks", b"core.ignorecase",
+            b"core.trustctime", b"core.checkstat", b"core.ignorestat",
+        }
+        options = []
+        for item in self._run(root, "config", "--null", "--list").split(b"\0"):
+            key, separator, value = item.partition(b"\n")
+            if key.lower() in allowed:
+                options += ["-c", os.fsdecode(key) + "=" + os.fsdecode(value if separator else b"true")]
+        with tempfile.TemporaryDirectory(prefix="web-edit-conversion-") as temporary:
+            folder = Path(temporary)
+            (folder / "objects").mkdir()
+            (folder / "refs").mkdir()
+            (folder / "info").mkdir()
+            (folder / "HEAD").write_text("ref: refs/heads/main\n")
+            config = (
+                "[core]\nrepositoryformatversion = 1\n[extensions]\nobjectformat = sha256\n"
+                if sha256 else "[core]\nrepositoryformatversion = 0\n"
+            )
+            (folder / "config").write_text(config)
+            attributes = self._git_path(root, "info/attributes")
+            try:
+                if not attributes.parent.exists():
+                    raise FileNotFoundError()
+                parent = self._pin_directory(attributes.parent, metadata=True)
+                source = os.open(
+                    attributes.name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK,
+                    dir_fd=parent,
+                )
+            except FileNotFoundError:
+                source = None
+            if source is not None:
+                with os.fdopen(source, "rb") as stream:
+                    info = os.fstat(stream.fileno())
+                    if not stat.S_ISREG(info.st_mode) or info.st_size > TEXT_LIMIT:
+                        raise FileError("Git attributes exceed the action limit.", 413)
+                    contents = stream.read(TEXT_LIMIT + 1)
+                if len(contents) > TEXT_LIMIT:
+                    raise FileError("Git attributes exceed the action limit.", 413)
+                (folder / "info/attributes").write_bytes(contents)
+            yield folder, options
+
+    def _filtered_paths(self, root, names, *, conversion=None, options=()):
+        if not names:
+            return set()
+        if conversion is None:
+            with self._conversion_repository(root) as (folder, settings):
+                return self._filtered_paths(root, names, conversion=folder, options=settings)
+        raw = self._run(
+            root, *options, "check-attr", "-z", "--stdin", "filter",
+            input=b"".join(name.encode("utf-8") + b"\0" for name in names),
+            conversion=conversion,
+        ).split(b"\0")
+        return {
+            self._name(raw[i])
+            for i in range(0, len(raw) - 2, 3)
+            if raw[i + 2] not in {b"unspecified", b"unset"}
+        }
+
+    def _stage_blob(self, root, name, data):
+        with self._conversion_repository(root) as (folder, options):
+            if self._filtered_paths(root, [name], conversion=folder, options=options):
+                raise FileError(FILTERED_STAGE)
+            oid = self._run(
+                root, *options, "hash-object", "-w", f"--path={name}", "--stdin",
+                input=data, limit=128, conversion=folder,
+            ).strip().decode("ascii")
+            converted = self._run(
+                root, "cat-file", "blob", oid, limit=TEXT_LIMIT, conversion=folder,
+            )
+        return self._run(
+            root, "hash-object", "-w", "--no-filters", "--stdin",
+            input=converted, limit=128,
+        ).strip()
+
+    @contextmanager
+    def _index_transaction(self, root):
+        index = self._git_path(root, "index")
+        # As with repository directories, never reopen metadata through links.
+        folder = index.parent
+        fd = self._pin_directory(folder, metadata=True)
+        lock_name = index.name + ".lock"
+        try:
+            lock = os.open(
+                lock_name, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
+                0o600, dir_fd=fd,
+            )
+        except FileExistsError:
+            raise FileError("Index is locked. Try again.", 409)
+        temporary = ".web-edit-index-" + secrets.token_hex(16)
+        try:
+            try:
+                source = os.open(
+                    index.name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=fd,
+                )
+            except FileNotFoundError:
+                source = None
+            if source is not None:
+                with os.fdopen(source, "rb") as stream:
+                    info = os.fstat(stream.fileno())
+                    if not stat.S_ISREG(info.st_mode) or info.st_size > OUTPUT_LIMIT:
+                        raise FileError("Index exceeds the action limit.", 413)
+                    data = stream.read(OUTPUT_LIMIT + 1)
+                if len(data) > OUTPUT_LIMIT:
+                    raise FileError("Index exceeds the action limit.", 413)
+                target = os.open(
+                    temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
+                    stat.S_IMODE(info.st_mode), dir_fd=fd,
+                )
+                with os.fdopen(target, "wb") as stream:
+                    stream.write(data)
+            yield fd, temporary
+            result = os.open(
+                temporary, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=fd,
+            )
+            try:
+                if not stat.S_ISREG(os.fstat(result).st_mode):
+                    raise FileError(CHANGED, 409)
+                os.fsync(result)
+            finally:
+                os.close(result)
+            self._validate_directory(folder, fd, metadata=True)
+            os.replace(temporary, index.name, src_dir_fd=fd, dst_dir_fd=fd)
+        finally:
+            os.close(lock)
+            for name in (temporary, temporary + ".lock", lock_name):
+                try:
+                    os.unlink(name, dir_fd=fd)
+                except FileNotFoundError:
+                    pass
+
+    @pinned_operation
+    def action(self, path, comparison, entry, snapshot, action):
+        if (
+            not all(isinstance(value, str) for value in (path, comparison, entry, snapshot, action))
+            or comparison not in {"all", "unstaged", "staged"}
+            or action not in {"stage", "unstage"}
+        ):
+            raise FileError("Invalid Git action.")
+        root = self._root(path)
+        entries, current = self._state(root, comparison)
+        if not snapshot or snapshot != current:
+            raise FileError(CHANGED, 409)
+        selected = next((item for item in entries if item["id"] == entry), None)
+        if selected is None:
+            raise FileError("Invalid Git action.")
+        if selected["action"] != action:
+            if (
+                action == "stage"
+                and selected["new_path"]
+                and self._filtered_paths(root, [selected["new_path"]])
+            ):
+                raise FileError(FILTERED_STAGE)
+            raise FileError("Invalid Git action.")
+        paths = sorted({selected["old_path"], selected["new_path"]} - {None})
+        replacements = {}
+        if action == "stage":
+            for name in paths:
+                disk, data = self._disk(root, name, content=True)
+                if disk["kind"] == "missing":
+                    continue
+                if disk["kind"] != "regular":
+                    raise FileError("This file does not support staging.")
+                if data is None:
+                    raise FileError("Staging is limited to 10 MiB per file.", 413)
+                oid = self._stage_blob(root, name, data)
+                mode = b"100755" if disk["stat"][2] & 0o111 else b"100644"
+                replacements[name] = (mode, oid)
+        elif self._has_head(root):
+            base = self._run(root, "rev-parse", "--verify", "HEAD^{commit}").strip().decode("ascii")
+            for record in self._run(root, "ls-tree", "-r", "-z", base).split(b"\0"):
+                if record:
+                    fields, raw_name = record.split(b"\t", 1)
+                    name = self._name(raw_name)
+                    if name in paths:
+                        mode, _, oid = fields.split()
+                        replacements[name] = (mode, oid)
+        # update-index addresses exact names, but adding a file over an
+        # unrelated directory entry (or vice versa) must still be refused.
+        tracked = {
+            self._name(name)
+            for name in self._run(root, "ls-files", "-z").split(b"\0")
+            if name
+        }
+        for name in replacements:
+            if any(
+                other.startswith(name + "/") or name.startswith(other + "/")
+                for other in tracked.difference(paths)
+            ):
+                raise FileError("Index path conflict. Refresh the diff.", 409)
+        zero = b"0" * len(self._run(root, "hash-object", "--stdin").strip())
+        records = bytearray()
+        for name in paths:
+            records.extend(b"0 " + zero + b"\t" + name.encode("utf-8") + b"\0")
+        for name, (mode, oid) in replacements.items():
+            records.extend(mode + b" " + oid + b"\t" + name.encode("utf-8") + b"\0")
+        # Hold the real index lock from final validation through publication.
+        # Git updates a private index so it cannot remove our real lock.
+        with self._index_transaction(root) as index_file:
+            if self._root(path) != root or self._state(root, comparison)[1] != snapshot:
+                raise FileError(CHANGED, 409)
+            self._run(
+                root, "update-index", "-z", "--index-info",
+                input=records, index_file=index_file,
+            )
+        return self.changes(path, comparison)
 
     @pinned_operation
     def _blob(self, root, oid):

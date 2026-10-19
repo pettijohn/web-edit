@@ -114,6 +114,22 @@ def create_app(directory=".", *, host="127.0.0.1", allowed_hosts=()):
             )
         )
 
+    async def git_action(request):
+        chunks = bytearray()
+        async for chunk in request.stream():
+            if len(chunks) + len(chunk) > 8192:
+                raise FileError("Git action body exceeds the limit.", 413)
+            chunks.extend(chunk)
+        try:
+            body = json.loads(chunks)
+        except (ValueError, UnicodeDecodeError, RecursionError):
+            raise FileError("Invalid JSON.")
+        fields = {"path", "comparison", "entry", "snapshot", "action"}
+        if not isinstance(body, dict) or set(body) != fields:
+            raise FileError("Provide path, comparison, entry, snapshot, and action.")
+        result = await run_in_threadpool(git_store.action, **body)
+        return JSONResponse(result)
+
     def read_text(request):
         return JSONResponse(store.text(request.query_params.get("path", "")))
 
@@ -182,6 +198,7 @@ def create_app(directory=".", *, host="127.0.0.1", allowed_hosts=()):
             Route("/api/git/context", git_context),
             Route("/api/git/changes", git_changes),
             Route("/api/git/file", git_file),
+            Route("/api/git/action", git_action, methods=["POST"]),
             Route("/api/text", read_text, methods=["GET"]),
             Route("/api/text", save_text, methods=["PUT"]),
             Route("/api/upload", upload, methods=["POST"]),

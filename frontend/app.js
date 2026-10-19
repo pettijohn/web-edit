@@ -25,6 +25,7 @@ let wrapDiff = false;
 try { wrapDiff = localStorage.getItem("web-edit-diff-wrap") === "true"; } catch { /* Use the session preference. */ }
 $("diff-wrap").checked = wrapDiff;
 let diff = null, diffEditor = null, merge = null, diffAbort = null, contextAbort = null;
+let gitAction = null;
 let preferredLayout = null;
 try { preferredLayout = localStorage.getItem("web-edit-diff-layout"); } catch { /* Session preference remains available. */ }
 if (!["split", "unified"].includes(preferredLayout)) preferredLayout = null;
@@ -439,7 +440,7 @@ async function loadDiff(folder, params, token, nextPath = "") {
     const context = await api(apiURL("git/context", folder), { signal });
     if (!context.available) throw new Error(gitReasons[context.reason] || context.reason || "Cannot read this repository");
     const list = await api(`${apiURL("git/changes", folder)}&comparison=${comparison}`, { signal });
-    const selected = list.entries.find((entry) => entryPath(entry) === hint) || list.entries.find((entry) => entryPath(entry) === nextPath) || list.entries[0] || null;
+    const selected = list.entries.find((entry) => entryPath(entry) === hint) || [nextPath].flat().map((path) => list.entries.find((entry) => entryPath(entry) === path)).find(Boolean) || list.entries[0] || null;
     const file = selected ? await api(`${apiURL("git/file", folder)}&${new URLSearchParams({ comparison, entry: selected.id, snapshot: list.snapshot })}`, { signal }) : null;
     if (token !== navigation) return;
     destroyDiffEditor();
@@ -472,7 +473,15 @@ function renderDiff() {
     link.href = diffRoute(diff.folder, diff.comparison, link.dataset.path, diff.layout);
     if (entry.id === diff.entry?.id) link.setAttribute("aria-current", "true");
     link.append(element("span", "", entry.old_path && entry.new_path && entry.old_path !== entry.new_path ? `${entry.old_path} → ${entry.new_path}` : entryPath(entry)), element("small", "", ({ modified: "Modified", added: "Added", deleted: "Deleted", renamed: "Renamed", untracked: "Untracked", unmerged: "Unmerged", copied: "Copied", type_changed: "Type changed" })[entry.status] || entry.status));
-    $("diff-list").append(link);
+    const row = element("div", "diff-file-row");
+    row.append(link);
+    if (["stage", "unstage"].includes(entry.action)) {
+      const button = element("button", "secondary diff-action", entry.action === "stage" ? "Stage" : "Unstage");
+      button.setAttribute("aria-label", `${button.textContent} ${entryPath(entry)}`);
+      button.addEventListener("click", () => changeGitEntry(entry, button));
+      row.append(button);
+    }
+    $("diff-list").append(row);
   }
   $("diff-title").textContent = diff.entry ? entryPath(diff.entry) : "";
   $("diff-metadata").replaceChildren(); $("diff-labels").replaceChildren();
@@ -541,7 +550,12 @@ function updateDiffSaveState() {
   const editable = Boolean(diff?.file?.editable);
   $("diff-save").hidden = !editable; $("diff-copy").hidden = !editable;
   $("diff-save").disabled = saving || !diffDirty();
-  $("diff-save-state").textContent = editable ? saving ? "Saving…" : diffDirty() ? "Unsaved changes" : "All changes saved" : "Read-only";
+  $("diff-save-state").textContent = gitAction ? gitAction === "stage" ? "Staging…" : "Unstaging…" : editable ? saving ? "Saving…" : diffDirty() ? "Unsaved changes" : "All changes saved" : "Read-only";
+  for (const button of $("diff-list").querySelectorAll(".diff-action")) {
+    button.disabled = saving || diffDirty();
+    button.title = diffDirty() ? "Save or discard edits before staging." : "";
+  }
+  if (diffDirty() && $("diff-list").querySelector(".diff-action")) $("diff-save-state").textContent += ". Save or discard edits before staging.";
   $("diff-open").hidden = !diff?.file?.working_path || Boolean(diff?.file?.reason);
   if (diff?.file?.working_path) $("diff-open").href = routeURL("edit", diff.file.working_path);
   for (const id of ["diff-refresh", "diff-files", "diff-comparison", "diff-layout"]) $(id).disabled = saving;
@@ -562,6 +576,35 @@ async function switchDiffLayout(layout) {
   try { localStorage.setItem("web-edit-diff-layout", layout); } catch { /* Keep the session preference. */ }
   if (state) createDiffEditor(state);
   updateDiffSaveState(); replaceDiffHash();
+}
+async function changeGitEntry(entry, button) {
+  if (!diff || saving) return;
+  if (diffDirty()) { notify("Save or discard edits before staging.", true); return; }
+  const action = entry.action;
+  if (!["stage", "unstage"].includes(action)) return;
+  const index = diff.list.entries.findIndex((item) => item.id === diff.entry?.id);
+  const fallback = [diff.list.entries[index + 1], diff.list.entries[index - 1]].filter(Boolean).map(entryPath);
+  let restoreFocus = false;
+  saving = true; gitAction = action; updateDiffSaveState();
+  notify(action === "stage" ? "Staging…" : "Unstaging…");
+  $("diff-section").inert = true;
+  $("diff-list").inert = true;
+  try {
+    await api("./api/git/action", { method: "POST", headers: { "Content-Type": "application/json", "X-Web-Edit": "1" },
+      body: JSON.stringify({ path: diff.folder, comparison: diff.comparison, entry: entry.id, snapshot: diff.list.snapshot, action }) });
+    notify("");
+    await loadDiff(diff.folder, new URLSearchParams(currentHash.split("?")[1]), ++navigation, fallback);
+    restoreFocus = !button.isConnected;
+    const done = action === "stage" ? "File staged." : "File unstaged.";
+    if (!$("notice").hidden) notify(`${done} Change list is stale. ${$("notice").textContent}`, true);
+    else notify(done);
+  } catch (error) {
+    notify(error.message, true);
+  } finally {
+    saving = false; gitAction = null;
+    $("diff-section").inert = false; $("diff-list").inert = false; updateDiffSaveState();
+    if (restoreFocus) ($("diff-list").querySelector("a[aria-current]") || $("diff-files")).focus({ preventScroll: true });
+  }
 }
 async function saveDiff() {
   if (!diffEditor || !diff.file.editable || saving || !diffDirty()) return;

@@ -4,7 +4,7 @@
 
 Add a view of local Git changes with direct editing of working-tree text. The default view shows two versions of one file side by side. The application must work when its startup folder is not a Git repository.
 
-This document proposes the first implementation. It permits ordinary file saves, but it does not add Git actions that change the index or repository history.
+This document proposes the first implementation. It permits ordinary file saves and per-file Stage and Unstage actions. It does not change repository history.
 
 ## Main decisions
 
@@ -176,21 +176,36 @@ Deleted files, symbolic links, submodules, conflicts, unsupported text, and unav
 
 An **Open in editor** link remains available for a supported working-tree file. This link uses the same unsaved-change guard as other navigation.
 
+## Stage and Unstage
+
+Each changed-file row offers **Stage** or **Unstage** beside its status. These actions affect the selected file, not individual changed chunks.
+
+**Unstaged** offers **Stage**. **Staged** offers **Unstage**. **All changes** offers **Stage** if unstaged changes exist for that entry. Otherwise, it offers **Unstage**. A partially staged file offers **Stage** to include its remaining disk changes.
+
+Stage updates exact index entries from verified disk contents. Stage supports regular files up to 10 MiB, including binary files. Files that use Git filters require an external Git tool for Stage. Unstage remains available for these files. Unstage restores the index entry from `HEAD`. Before the first commit, Unstage removes the index entry. Neither action changes disk contents or creates a commit.
+
+The actions remain disabled while the diff contains unsaved edits. The interface explains that the user must save or discard those edits first. It does not stage unsaved editor contents.
+
+After an action, the application refreshes the current comparison. It retains the selection if the entry remains. Otherwise, it selects the next remaining file. The Unstaged list becomes shorter after each successful Stage action.
+
+The server validates the selected entry and snapshot before an action. It holds the Git index lock during final validation and publication. Exact index updates prevent an action from affecting unselected files. A stale result requires Refresh. A failed action keeps the current comparison visible with an error notice. The application disables concurrent actions during the request.
+
 ## API design
 
-A new `GitStore` in `web_edit/git.py` owns discovery, status, and source retrieval. It uses the existing `FileStore` boundary checks. `web_edit/app.py` exposes three read-only endpoints.
+A new `GitStore` in `web_edit/git.py` owns discovery, status, and source retrieval. It uses the existing `FileStore` boundary checks. `web_edit/app.py` exposes three read-only endpoints and one endpoint that updates the index.
 
 | Endpoint | Purpose |
 | --- | --- |
 | `GET /api/git/context?path=...` | Find the repository for a browser folder |
 | `GET /api/git/changes?path=...&comparison=all` | List entries for `all`, `unstaged`, or `staged` |
 | `GET /api/git/file?path=...&comparison=all&entry=...&snapshot=...` | Read the selected pair of sources |
+| `POST /api/git/action` | Stage or unstage one entry with its comparison and snapshot |
 
 The `path` parameter always uses a path relative to the startup folder. Entry paths in the result use paths relative to the repository root. Separate field names must prevent confusion between these path types.
 
 The context response contains `available`, `reason`, and `repo_path`. Expected disabled states use `available: false`. Invalid paths and unexpected server errors use the existing JSON error format.
 
-The changes response contains the repository path, comparison, snapshot token, and entries. Each entry contains an opaque identifier, status, old path, new path, and Git modes. The server creates the identifier. It does not accept arbitrary Git revision expressions from the client.
+The changes response contains the repository path, comparison, snapshot token, and entries. Each entry contains an opaque identifier, status, old path, new path, Git modes, and its available action. The server creates the identifier. It does not accept arbitrary Git revision expressions from the client.
 
 The file response contains both source labels, content, byte sizes, and content hashes. It also contains file modes, newline metadata, and a reason if a text comparison is unavailable. Metadata-only entries do not require text content.
 
@@ -220,7 +235,7 @@ The Git runner applies these constraints:
 
 Linked worktrees can keep Git metadata outside the startup boundary. The server can read Git metadata through Git for a permitted working tree. This exception does not permit browsing external working-tree files or serving arbitrary metadata files.
 
-The first implementation permits no staging, restore, commit, or Git discard actions. Ordinary Save writes only the selected working-tree file. Git remains optional. No Git subprocess runs during application startup.
+The implementation permits per-file Stage and Unstage actions, but no working-tree restore, commit, or Git discard actions. Ordinary Save writes only the selected working-tree file. Git remains optional. No Git subprocess runs during application startup.
 
 ## Platform support
 
@@ -305,6 +320,10 @@ The test suite covers these cases:
 - Layout switches preserve unsaved text and undo history.
 - File switches, Refresh, and navigation protect unsaved Diff edits.
 - Saving changes only disk contents, not the index or `HEAD`.
+- Stage and Unstage affect only the selected file and preserve disk contents.
+- Stage and Unstage reject stale snapshots and requests without the write header.
+- Successful actions refresh the list and select the next remaining file.
+- Unsaved Diff edits disable Stage and Unstage.
 - Files restores the existing all-files browser and the original folder.
 - The installed wheel serves all diff assets without Node.js or network access.
 
